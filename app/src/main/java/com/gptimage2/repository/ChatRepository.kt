@@ -1,0 +1,143 @@
+package com.gptimage2.repository
+
+import android.content.Context
+import android.util.Log
+import com.google.gson.Gson
+import com.google.gson.JsonArray
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
+import com.gptimage2.data.model.ChatImage
+import com.gptimage2.data.model.ChatMessage
+import com.gptimage2.data.model.ChatRole
+import com.gptimage2.util.ApiKeyManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.concurrent.TimeUnit
+
+/**
+ * POST {baseUrl}/v1/chat/completions (multimodal)
+ * The assistant may reply with text mixed with image URLs or base64 data URLs.
+ */
+class ChatRepository(private val context: Context) {
+
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(300, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .build()
+
+    private val gson = Gson()
+
+    private val apiKey get() = ApiKeyManager.loadApiKey(context)
+    private val endpoint get() = "${ApiKeyManager.loadBaseUrl(context)}/v1/chat/completions"
+
+    suspend fun send(history: List<ChatMessage>): Result<ChatMessage> = withContext(Dispatchers.IO) {
+        if (apiKey.isBlank()) return@withContext Result.failure(Exception("请先在设置中填写 API Key"))
+        try {
+            val body = JsonObject().apply {
+                addProperty("model", ImageGenRepository.MODEL)
+                addProperty("stream", false)
+                add("messages", buildMessages(history))
+            }
+
+            val response = client.newCall(
+                Request.Builder()
+                    .url(endpoint)
+                    .header("Authorization", "Bearer $apiKey")
+                    .header("Content-Type", "application/json")
+                    .post(gson.toJson(body).toRequestBody("application/json".toMediaType()))
+                    .build()
+            ).execute()
+
+            val raw = response.body?.string()
+            if (!response.isSuccessful || raw == null) {
+                return@withContext Result.failure(Exception(errorFor(response.code, raw)))
+            }
+            Result.success(parseReply(raw))
+        } catch (e: Exception) {
+            Log.e("ChatRepo", "send failed", e)
+            Result.failure(e)
+        }
+    }
+
+    private fun buildMessages(history: List<ChatMessage>): JsonArray {
+        val arr = JsonArray()
+        for (msg in history) {
+            if (msg.isLoading || msg.errorMessage != null) continue
+            val obj = JsonObject()
+            obj.addProperty("role", if (msg.role == ChatRole.USER) "user" else "assistant")
+            if (msg.images.isEmpty()) {
+                obj.addProperty("content", msg.text)
+            } else {
+                val content = JsonArray()
+                if (msg.text.isNotBlank()) {
+                    content.add(JsonObject().apply {
+                        addProperty("type", "text")
+                        addProperty("text", msg.text)
+                    })
+                }
+                for (img in msg.images) {
+                    content.add(JsonObject().apply {
+                        addProperty("type", "image_url")
+                        add("image_url", JsonObject().apply {
+                            addProperty("url", "data:${img.mimeType};base64,${img.base64}")
+                        })
+                    })
+                }
+                obj.add("content", content)
+            }
+            arr.add(obj)
+        }
+        return arr
+    }
+
+    private fun parseReply(raw: String): ChatMessage {
+        val root = JsonParser.parseString(raw).asJsonObject
+        val choice = root.getAsJsonArray("choices")?.firstOrNull()?.asJsonObject
+            ?: throw Exception(root.getAsJsonObject("error")?.get("message")?.asString ?: "空响应")
+        val content = choice.getAsJsonObject("message").get("content").asString
+
+        val images = mutableListOf<ChatImage>()
+        var textPart = content
+
+        // data:image/...;base64,...
+        val dataRegex = Regex("""data:(image/[a-zA-Z0-9+\-.]+);base64,([A-Za-z0-9+/=]+)""")
+        dataRegex.findAll(content).forEach { m ->
+            images += ChatImage(base64 = m.groupValues[2], mimeType = m.groupValues[1])
+        }
+        textPart = dataRegex.replace(textPart, "[image]")
+
+        // ![](https://...) or https?://...(png|jpg|jpeg|webp)
+        val urlRegex = Regex("""https?://[^\s)\]]+\.(?:png|jpe?g|webp)""", RegexOption.IGNORE_CASE)
+        urlRegex.findAll(content).forEach { m ->
+            runCatching {
+                val bytes = downloadBytes(m.value)
+                val mime = when {
+                    m.value.endsWith(".png", true) -> "image/png"
+                    m.value.endsWith(".webp", true) -> "image/webp"
+                    else -> "image/jpeg"
+                }
+                images += ChatImage(
+                    base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP),
+                    mimeType = mime
+                )
+            }
+        }
+        textPart = urlRegex.replace(textPart, "[image]")
+
+        return ChatMessage(
+            role = ChatRole.ASSISTANT,
+            text = textPart.trim(),
+            images = images
+        )
+    }
+
+    private fun downloadBytes(url: String): ByteArray {
+        val resp = client.newCall(Request.Builder().url(url).build()).execute()
+        return resp.body?.bytes() ?: throw Exception("下载图片失败")
+    }
+}
