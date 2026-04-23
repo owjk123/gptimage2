@@ -9,6 +9,7 @@
 .cxx
 local.properties
 
-# API Keys - never commit
+# keystores: gitignore by default, but allow the checked-in signing one
 *.keystore
 *.jks
+!signing/gptimage2.keystore

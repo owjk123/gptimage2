@@ -23,14 +23,26 @@ android {
         buildConfigField("String", "APIYI_KEY", "\"$apiKey\"")
     }
 
+    signingConfigs {
+        create("appKey") {
+            storeFile = rootProject.file("signing/gptimage2.keystore")
+            storePassword = "gptimage2"
+            keyAlias = "gptimage2"
+            keyPassword = "gptimage2"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("appKey")
+        }
         release {
             isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("appKey")
         }
     }
 
