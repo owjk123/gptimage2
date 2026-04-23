@@ -11,23 +11,30 @@ import com.gptimage2.data.model.ChatMessage
 import com.gptimage2.data.model.ChatRole
 import com.gptimage2.util.ApiKeyManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import okhttp3.ConnectionPool
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.IOException
+import java.net.SocketException
 import java.util.concurrent.TimeUnit
 
 /**
  * POST {baseUrl}/v1/chat/completions (multimodal)
- * The assistant may reply with text mixed with image URLs or base64 data URLs.
+ * 多模态生图对话：包含图片的请求可能耗时 60-180s，服务端偶发闪断。
  */
 class ChatRepository(private val context: Context) {
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(300, TimeUnit.SECONDS)
-        .writeTimeout(60, TimeUnit.SECONDS)
+        .connectTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(600, TimeUnit.SECONDS)
+        .writeTimeout(180, TimeUnit.SECONDS)
+        .callTimeout(600, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
+        .connectionPool(ConnectionPool(4, 30, TimeUnit.SECONDS))
         .build()
 
     private val gson = Gson()
@@ -37,31 +44,45 @@ class ChatRepository(private val context: Context) {
 
     suspend fun send(history: List<ChatMessage>): Result<ChatMessage> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) return@withContext Result.failure(Exception("请先在设置中填写 API Key"))
-        try {
-            val body = JsonObject().apply {
-                addProperty("model", ImageGenRepository.MODEL)
-                addProperty("stream", false)
-                add("messages", buildMessages(history))
-            }
+        val bodyJson = gson.toJson(JsonObject().apply {
+            addProperty("model", ImageGenRepository.MODEL)
+            addProperty("stream", false)
+            add("messages", buildMessages(history))
+        })
 
-            val response = client.newCall(
-                Request.Builder()
-                    .url(endpoint)
-                    .header("Authorization", "Bearer $apiKey")
-                    .header("Content-Type", "application/json")
-                    .post(gson.toJson(body).toRequestBody("application/json".toMediaType()))
-                    .build()
-            ).execute()
+        var lastError: Throwable? = null
+        for (attempt in 1..3) {
+            try {
+                val response = client.newCall(
+                    Request.Builder()
+                        .url(endpoint)
+                        .header("Authorization", "Bearer $apiKey")
+                        .header("Content-Type", "application/json")
+                        .header("Connection", "close")
+                        .post(bodyJson.toRequestBody("application/json".toMediaType()))
+                        .build()
+                ).execute()
 
-            val raw = response.body?.string()
-            if (!response.isSuccessful || raw == null) {
-                return@withContext Result.failure(Exception(errorFor(response.code, raw)))
+                val raw = response.body?.string()
+                if (!response.isSuccessful || raw == null) {
+                    return@withContext Result.failure(Exception(errorFor(response.code, raw)))
+                }
+                return@withContext Result.success(parseReply(raw))
+            } catch (e: SocketException) {
+                lastError = e
+                Log.w("ChatRepo", "attempt $attempt aborted: ${e.message}")
+                delay(1500L * attempt)
+            } catch (e: IOException) {
+                lastError = e
+                Log.w("ChatRepo", "attempt $attempt IO: ${e.message}")
+                if (attempt == 3) break
+                delay(1500L * attempt)
+            } catch (e: Exception) {
+                Log.e("ChatRepo", "send failed", e)
+                return@withContext Result.failure(e)
             }
-            Result.success(parseReply(raw))
-        } catch (e: Exception) {
-            Log.e("ChatRepo", "send failed", e)
-            Result.failure(e)
         }
+        Result.failure(Exception("连接被中断，请检查网络或在设置页切换到其他端口后重试 (${lastError?.message ?: "-"})"))
     }
 
     private fun buildMessages(history: List<ChatMessage>): JsonArray {
@@ -104,14 +125,12 @@ class ChatRepository(private val context: Context) {
         val images = mutableListOf<ChatImage>()
         var textPart = content
 
-        // data:image/...;base64,...
         val dataRegex = Regex("""data:(image/[a-zA-Z0-9+\-.]+);base64,([A-Za-z0-9+/=]+)""")
         dataRegex.findAll(content).forEach { m ->
             images += ChatImage(base64 = m.groupValues[2], mimeType = m.groupValues[1])
         }
         textPart = dataRegex.replace(textPart, "[image]")
 
-        // ![](https://...) or https?://...(png|jpg|jpeg|webp)
         val urlRegex = Regex("""https?://[^\s)\]]+\.(?:png|jpe?g|webp)""", RegexOption.IGNORE_CASE)
         urlRegex.findAll(content).forEach { m ->
             runCatching {

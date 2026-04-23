@@ -93,6 +93,7 @@ class MainViewModel(
 
     fun setTab(tab: AppTab) = _ui.update { it.copy(tab = tab) }
     fun dismissToast() = _ui.update { it.copy(toastMessage = null) }
+    fun showToastPublic(msg: String) = showToast(msg)
     private fun showToast(msg: String) = _ui.update { it.copy(toastMessage = msg) }
 
     // ── Text-to-Image ───────────────────────────────────────

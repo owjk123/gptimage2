@@ -1,6 +1,5 @@
 package com.gptimage2.ui.screens
 
-import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -14,6 +13,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,6 +36,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,8 +61,13 @@ fun ChatScreen(state: ChatState, viewModel: MainViewModel) {
     val listState = rememberLazyListState()
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
-            val (bytes, mime) = ImageCodec.readUri(context, uri) ?: return@rememberLauncherForActivityResult
-            viewModel.addChatImage(ChatImage(base64 = ImageCodec.makePreview(bytes, 1024), mimeType = mime))
+            val read = ImageCodec.readUri(context, uri)
+            if (read == null) {
+                viewModel.showToastPublic("无法读取所选图片")
+                return@rememberLauncherForActivityResult
+            }
+            val b64 = ImageCodec.makePreview(read.first, maxSide = 1024)
+            viewModel.addChatImage(ChatImage(base64 = b64, mimeType = "image/jpeg"))
         }
     }
 
@@ -90,7 +97,7 @@ fun ChatScreen(state: ChatState, viewModel: MainViewModel) {
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(state.messages) { msg -> MessageBubble(msg) }
+                    items(state.messages, key = { it.id }) { msg -> MessageBubble(msg) }
                 }
             }
         }
@@ -112,19 +119,8 @@ private fun MessageBubble(msg: ChatMessage) {
             Column(Modifier.padding(10.dp)) {
                 if (msg.images.isNotEmpty()) {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(msg.images) { img ->
-                            val bytes = ImageCodec.base64ToBytes(img.base64)
-                            val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                            if (bmp != null) {
-                                Image(
-                                    bitmap = bmp.asImageBitmap(),
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier
-                                        .size(140.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                )
-                            }
+                        items(msg.images, key = { it.base64.hashCode() }) { img ->
+                            BubbleImage(img)
                         }
                     }
                     if (msg.text.isNotBlank()) Spacer(Modifier.height(8.dp))
@@ -150,11 +146,28 @@ private fun MessageBubble(msg: ChatMessage) {
 }
 
 @Composable
+private fun BubbleImage(img: ChatImage) {
+    val bmp = remember(img.base64) { ImageCodec.decodeBitmap(img.base64, maxSide = 512) }
+    if (bmp != null) {
+        Image(
+            bitmap = bmp.asImageBitmap(),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(140.dp)
+                .clip(RoundedCornerShape(8.dp))
+        )
+    }
+}
+
+@Composable
 private fun ChatComposer(state: ChatState, viewModel: MainViewModel, onPick: () -> Unit) {
     Column(
         Modifier
             .fillMaxWidth()
             .background(GptColors.Onyx)
+            .imePadding()
+            .navigationBarsPadding()
             .padding(12.dp)
     ) {
         if (state.pendingImages.isNotEmpty()) {
@@ -163,27 +176,10 @@ private fun ChatComposer(state: ChatState, viewModel: MainViewModel, onPick: () 
                 modifier = Modifier.padding(bottom = 8.dp)
             ) {
                 items(state.pendingImages.size) { idx ->
-                    val img = state.pendingImages[idx]
-                    Box(Modifier.size(64.dp)) {
-                        val bytes = ImageCodec.base64ToBytes(img.base64)
-                        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                        if (bmp != null) {
-                            Image(
-                                bitmap = bmp.asImageBitmap(),
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(RoundedCornerShape(8.dp))
-                            )
-                        }
-                        IconButton(
-                            onClick = { viewModel.removeChatImage(idx) },
-                            modifier = Modifier.align(Alignment.TopEnd).size(22.dp)
-                        ) {
-                            Icon(Icons.Default.Close, contentDescription = null, tint = GptColors.WarmWhite)
-                        }
-                    }
+                    PendingImageThumb(
+                        img = state.pendingImages[idx],
+                        onRemove = { viewModel.removeChatImage(idx) }
+                    )
                 }
             }
         }
@@ -214,6 +210,29 @@ private fun ChatComposer(state: ChatState, viewModel: MainViewModel, onPick: () 
                     Icon(Icons.Default.Send, contentDescription = "发送", tint = GptColors.ChampagneGold)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PendingImageThumb(img: ChatImage, onRemove: () -> Unit) {
+    val bmp = remember(img.base64) { ImageCodec.decodeBitmap(img.base64, maxSide = 256) }
+    Box(Modifier.size(64.dp)) {
+        if (bmp != null) {
+            Image(
+                bitmap = bmp.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(8.dp))
+            )
+        }
+        IconButton(
+            onClick = onRemove,
+            modifier = Modifier.align(Alignment.TopEnd).size(22.dp)
+        ) {
+            Icon(Icons.Default.Close, contentDescription = null, tint = GptColors.WarmWhite)
         }
     }
 }

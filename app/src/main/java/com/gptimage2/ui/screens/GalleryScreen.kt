@@ -1,6 +1,5 @@
 package com.gptimage2.ui.screens
 
-import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -38,9 +37,9 @@ import androidx.compose.ui.unit.dp
 import com.gptimage2.data.model.GalleryImage
 import com.gptimage2.ui.components.EmptyHint
 import com.gptimage2.ui.components.GoldButton
-import com.gptimage2.ui.components.IconActionButton
 import com.gptimage2.ui.components.OutlineGoldButton
 import com.gptimage2.ui.theme.GptColors
+import com.gptimage2.util.ImageCodec
 import com.gptimage2.viewmodel.MainViewModel
 
 @Composable
@@ -63,6 +62,7 @@ fun GalleryScreen(images: List<GalleryImage>, viewModel: MainViewModel) {
         }
     }
     selected?.let { img ->
+        val fullBmp = remember(img.id) { ImageCodec.decodeFile(img.imagePath, maxSide = 2048) }
         AlertDialog(
             onDismissRequest = { selected = null },
             confirmButton = {
@@ -98,10 +98,9 @@ fun GalleryScreen(images: List<GalleryImage>, viewModel: MainViewModel) {
             title = { Text(img.endpoint, color = GptColors.ChampagneGold) },
             text = {
                 Column {
-                    val bmp = BitmapFactory.decodeFile(img.imagePath)
-                    if (bmp != null) {
+                    if (fullBmp != null) {
                         Image(
-                            bitmap = bmp.asImageBitmap(),
+                            bitmap = fullBmp.asImageBitmap(),
                             contentDescription = null,
                             contentScale = ContentScale.Fit,
                             modifier = Modifier
@@ -119,6 +118,7 @@ fun GalleryScreen(images: List<GalleryImage>, viewModel: MainViewModel) {
 
 @Composable
 private fun GalleryThumb(image: GalleryImage, onClick: () -> Unit) {
+    val bmp = remember(image.id) { ImageCodec.decodeFile(image.imagePath, maxSide = 512) }
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -126,7 +126,6 @@ private fun GalleryThumb(image: GalleryImage, onClick: () -> Unit) {
             .clip(RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
     ) {
-        val bmp = BitmapFactory.decodeFile(image.imagePath)
         if (bmp != null) {
             Image(
                 bitmap = bmp.asImageBitmap(),

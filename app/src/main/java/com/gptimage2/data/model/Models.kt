@@ -4,6 +4,16 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 import java.util.UUID
 
+/** APIYI 提供的四个 HTTP 端口（16888 协议）。 */
+data class ApiEndpoint(val label: String, val url: String)
+
+val API_ENDPOINTS = listOf(
+    ApiEndpoint("美国优化", "https://vip.apiyi.com"),
+    ApiEndpoint("CF-CDN", "https://api-cf.apiyi.com"),
+    ApiEndpoint("大陆优化1", "https://api.apiyi.com"),
+    ApiEndpoint("大陆优化2", "https://b.apiyi.com")
+)
+
 /** Which of the three gpt-image-2-all endpoints produced an image. */
 enum class EndpointKind(val label: String, val short: String) {
     TEXT_TO_IMAGE("文生图", "T2I"),

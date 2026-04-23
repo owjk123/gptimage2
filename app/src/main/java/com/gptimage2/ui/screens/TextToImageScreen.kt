@@ -1,15 +1,12 @@
 package com.gptimage2.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -19,11 +16,12 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.Image
 import com.gptimage2.data.model.ImageSize
 import com.gptimage2.data.model.OutputCount
 import com.gptimage2.ui.components.ChipSelector
@@ -36,8 +34,6 @@ import com.gptimage2.ui.components.SectionLabel
 import com.gptimage2.util.ImageCodec
 import com.gptimage2.viewmodel.MainViewModel
 import com.gptimage2.viewmodel.T2IState
-import android.graphics.BitmapFactory
-import androidx.compose.ui.layout.ContentScale
 
 @Composable
 fun TextToImageScreen(state: T2IState, viewModel: MainViewModel) {
@@ -104,7 +100,7 @@ fun TextToImageScreen(state: T2IState, viewModel: MainViewModel) {
         } else {
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(state.latestResults) { b64 ->
+                    items(state.latestResults, key = { it.hashCode() }) { b64 ->
                         Base64Thumbnail(b64)
                     }
                 }
@@ -115,8 +111,7 @@ fun TextToImageScreen(state: T2IState, viewModel: MainViewModel) {
 
 @Composable
 fun Base64Thumbnail(base64: String, sideDp: Int = 160) {
-    val bytes = ImageCodec.base64ToBytes(base64)
-    val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    val bmp = remember(base64) { ImageCodec.decodeBitmap(base64, maxSide = 512) }
     if (bmp != null) {
         Image(
             bitmap = bmp.asImageBitmap(),

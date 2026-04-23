@@ -16,6 +16,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.gptimage2.data.model.API_ENDPOINTS
+import com.gptimage2.data.model.ApiEndpoint
+import com.gptimage2.ui.components.ChipSelector
 import com.gptimage2.ui.components.GoldButton
 import com.gptimage2.ui.components.GptCard
 import com.gptimage2.ui.components.GptTextField
@@ -34,6 +37,35 @@ fun SettingsScreen(state: SettingsState, viewModel: MainViewModel) {
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         GptCard {
+            SectionLabel("API 接口（HTTP 端口 16888）")
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "选一个响应最快的端口，或在下方自定义。",
+                color = GptColors.Muted,
+                style = MaterialTheme.typography.bodySmall
+            )
+            Spacer(Modifier.height(10.dp))
+            val currentPreset = API_ENDPOINTS.firstOrNull { it.url == state.baseUrl.trimEnd('/') }
+                ?: ApiEndpoint("自定义", state.baseUrl)
+            val options = if (currentPreset in API_ENDPOINTS) API_ENDPOINTS
+            else API_ENDPOINTS + currentPreset
+            ChipSelector(
+                items = options,
+                selected = currentPreset,
+                labelOf = { it.label },
+                onSelect = { viewModel.updateBaseUrlDraft(it.url) }
+            )
+            Spacer(Modifier.height(12.dp))
+            GptTextField(
+                value = state.baseUrl,
+                onValueChange = viewModel::updateBaseUrlDraft,
+                label = "Base URL",
+                placeholder = "https://api.apiyi.com",
+                singleLine = true
+            )
+        }
+
+        GptCard {
             SectionLabel("API 凭证")
             Spacer(Modifier.height(10.dp))
             GptTextField(
@@ -41,14 +73,6 @@ fun SettingsScreen(state: SettingsState, viewModel: MainViewModel) {
                 onValueChange = viewModel::updateApiKeyDraft,
                 label = "API Key",
                 placeholder = "sk-...",
-                singleLine = true
-            )
-            Spacer(Modifier.height(10.dp))
-            GptTextField(
-                value = state.baseUrl,
-                onValueChange = viewModel::updateBaseUrlDraft,
-                label = "Base URL",
-                placeholder = "https://api.apiyi.com",
                 singleLine = true
             )
         }
@@ -76,7 +100,7 @@ fun SettingsScreen(state: SettingsState, viewModel: MainViewModel) {
             SectionLabel("提示")
             Spacer(Modifier.height(6.dp))
             Text(
-                "API Key 仅存储在本机 SharedPreferences，不会上传。到 api.apiyi.com 注册并创建 key 后填入即可。",
+                "API Key 仅存储在本机 SharedPreferences，不会上传。到 api.apiyi.com 注册并创建 key 后填入即可。若对话生图返回 \"连接被中断\"，切换到其他端口通常可恢复。",
                 color = GptColors.Muted,
                 style = MaterialTheme.typography.bodySmall
             )

@@ -1,6 +1,5 @@
 package com.gptimage2.ui.screens
 
-import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -20,8 +19,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,7 +41,6 @@ import com.gptimage2.ui.components.GoldButton
 import com.gptimage2.ui.components.GoldDivider
 import com.gptimage2.ui.components.GptCard
 import com.gptimage2.ui.components.GptTextField
-import com.gptimage2.ui.components.IconActionButton
 import com.gptimage2.ui.components.OutlineGoldButton
 import com.gptimage2.ui.components.SectionLabel
 import com.gptimage2.ui.theme.GptColors
@@ -51,9 +53,18 @@ fun ImageEditScreen(state: EditState, viewModel: MainViewModel) {
     val context = LocalContext.current
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
-            val (bytes, mime) = ImageCodec.readUri(context, uri) ?: return@rememberLauncherForActivityResult
+            val read = ImageCodec.readUri(context, uri)
+            if (read == null) {
+                viewModel.showToastPublic("无法读取所选图片")
+                return@rememberLauncherForActivityResult
+            }
+            val (bytes, mime) = read
             val preview = ImageCodec.makePreview(bytes)
-            viewModel.addEditReference(EditReference(bytes = bytes, mimeType = mime, previewBase64 = preview))
+            val uploadBytes = ImageCodec.makePreview(bytes, maxSide = 1536)
+                .let { ImageCodec.base64ToBytes(it) }
+            viewModel.addEditReference(
+                EditReference(bytes = uploadBytes, mimeType = "image/jpeg", previewBase64 = preview)
+            )
         }
     }
 
@@ -69,14 +80,14 @@ fun ImageEditScreen(state: EditState, viewModel: MainViewModel) {
                 Text(
                     "在 prompt 中用 \"image 1\"、\"image 2\" 引用各张参考图。",
                     color = GptColors.Muted,
-                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall
+                    style = MaterialTheme.typography.bodySmall
                 )
                 Spacer(Modifier.height(10.dp))
                 if (state.references.isEmpty()) {
                     EmptyHint("尚未添加参考图")
                 } else {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(state.references) { ref ->
+                        items(state.references, key = { it.id }) { ref ->
                             ReferenceThumb(ref, onRemove = { viewModel.removeEditReference(ref.id) })
                         }
                     }
@@ -150,7 +161,7 @@ fun ImageEditScreen(state: EditState, viewModel: MainViewModel) {
         } else {
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(state.latestResults) { b64 -> Base64Thumbnail(b64) }
+                    items(state.latestResults, key = { it.hashCode() }) { b64 -> Base64Thumbnail(b64) }
                 }
             }
         }
@@ -159,9 +170,8 @@ fun ImageEditScreen(state: EditState, viewModel: MainViewModel) {
 
 @Composable
 private fun ReferenceThumb(ref: EditReference, onRemove: () -> Unit) {
+    val bmp = remember(ref.id) { ImageCodec.decodeBitmap(ref.previewBase64, maxSide = 256) }
     Box(Modifier.size(88.dp)) {
-        val bytes = ImageCodec.base64ToBytes(ref.previewBase64)
-        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
         if (bmp != null) {
             Image(
                 bitmap = bmp.asImageBitmap(),
@@ -172,13 +182,11 @@ private fun ReferenceThumb(ref: EditReference, onRemove: () -> Unit) {
                     .clip(RoundedCornerShape(10.dp))
             )
         }
-        Box(Modifier.align(Alignment.TopEnd)) {
-            IconActionButton(
-                icon = Icons.Default.Close,
-                contentDescription = "移除",
-                onClick = onRemove,
-                tint = GptColors.WarmWhite
-            )
+        IconButton(
+            onClick = onRemove,
+            modifier = Modifier.align(Alignment.TopEnd).size(28.dp).padding(2.dp)
+        ) {
+            Icon(Icons.Default.Close, contentDescription = "移除", tint = GptColors.WarmWhite)
         }
     }
 }
