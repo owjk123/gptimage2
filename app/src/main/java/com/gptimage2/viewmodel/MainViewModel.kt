@@ -199,6 +199,13 @@ class MainViewModel(
         it.copy(chat = it.chat.copy(aspectPreset = next))
     }
 
+    /** Append "image N" (1-based) to the draft, preserving existing text. */
+    fun appendImageTag(index: Int) = _ui.update {
+        val draft = it.chat.draft
+        val sep = if (draft.isEmpty() || draft.endsWith(" ") || draft.endsWith("\n")) "" else " "
+        it.copy(chat = it.chat.copy(draft = draft + sep + "image $index"))
+    }
+
     fun resetChat() = _ui.update { it.copy(chat = ChatState()) }
 
     fun sendChat() {

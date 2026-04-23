@@ -5,6 +5,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +25,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Close
@@ -37,7 +39,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,6 +50,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.gptimage2.data.model.ChatImage
 import com.gptimage2.data.model.ChatMessage
 import com.gptimage2.data.model.ChatRole
@@ -62,6 +69,8 @@ import com.gptimage2.viewmodel.MainViewModel
 fun ChatScreen(state: ChatState, viewModel: MainViewModel) {
     val context = LocalContext.current
     val listState = rememberLazyListState()
+    var previewImage by remember { mutableStateOf<ChatImage?>(null) }
+
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             val read = ImageCodec.readUri(context, uri)
@@ -80,8 +89,6 @@ fun ChatScreen(state: ChatState, viewModel: MainViewModel) {
         }
     }
 
-    // IME 修复：把 imePadding 挂在最外层 Column 上，整个聊天区域（包括 messages）
-    // 在键盘弹出时动态收缩，composer 永远贴在 IME 上沿，正在输入的文字始终可见。
     Column(
         Modifier
             .fillMaxSize()
@@ -107,17 +114,25 @@ fun ChatScreen(state: ChatState, viewModel: MainViewModel) {
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(state.messages, key = { it.id }) { msg -> MessageBubble(msg) }
+                    items(state.messages, key = { it.id }) { msg ->
+                        MessageBubble(msg, onImageTap = { previewImage = it })
+                    }
                 }
             }
         }
 
-        ChatComposer(state = state, viewModel = viewModel, onPick = { picker.launch("image/*") })
+        ChatComposer(
+            state = state,
+            viewModel = viewModel,
+            onPick = { picker.launch("image/*") }
+        )
     }
+
+    previewImage?.let { img -> FullScreenPreview(img, onClose = { previewImage = null }) }
 }
 
 @Composable
-private fun MessageBubble(msg: ChatMessage) {
+private fun MessageBubble(msg: ChatMessage, onImageTap: (ChatImage) -> Unit) {
     val isUser = msg.role == ChatRole.USER
     val align = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
     Box(Modifier.fillMaxWidth(), contentAlignment = align) {
@@ -130,7 +145,7 @@ private fun MessageBubble(msg: ChatMessage) {
                 if (msg.images.isNotEmpty()) {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(msg.images, key = { it.base64.hashCode() }) { img ->
-                            BubbleImage(img)
+                            BubbleImage(img, onTap = { onImageTap(img) })
                         }
                     }
                     if (msg.text.isNotBlank()) Spacer(Modifier.height(8.dp))
@@ -146,9 +161,18 @@ private fun MessageBubble(msg: ChatMessage) {
                         Text("思考中…", color = GptColors.Muted, style = MaterialTheme.typography.bodySmall)
                     }
                 } else if (msg.errorMessage != null) {
-                    Text("错误: ${msg.errorMessage}", color = GptColors.Error, style = MaterialTheme.typography.bodyMedium)
+                    SelectionContainer {
+                        Text(
+                            "错误: ${msg.errorMessage}",
+                            color = GptColors.Error,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
                 } else if (msg.text.isNotBlank()) {
-                    Text(msg.text, color = GptColors.WarmWhite, style = MaterialTheme.typography.bodyMedium)
+                    // SelectionContainer 让长按可选中复制
+                    SelectionContainer {
+                        Text(msg.text, color = GptColors.WarmWhite, style = MaterialTheme.typography.bodyMedium)
+                    }
                 }
             }
         }
@@ -156,7 +180,7 @@ private fun MessageBubble(msg: ChatMessage) {
 }
 
 @Composable
-private fun BubbleImage(img: ChatImage) {
+private fun BubbleImage(img: ChatImage, onTap: () -> Unit) {
     val bmp = remember(img.base64) { ImageCodec.decodeBitmap(img.base64, maxSide = 512) }
     if (bmp != null) {
         Image(
@@ -166,7 +190,40 @@ private fun BubbleImage(img: ChatImage) {
             modifier = Modifier
                 .size(140.dp)
                 .clip(RoundedCornerShape(8.dp))
+                .clickable(onClick = onTap)
         )
+    }
+}
+
+@Composable
+private fun FullScreenPreview(img: ChatImage, onClose: () -> Unit) {
+    val bmp = remember(img.base64) { ImageCodec.decodeBitmap(img.base64, maxSide = 2048) }
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = true)
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(GptColors.Obsidian.copy(alpha = 0.95f))
+                .clickable(onClick = onClose),
+            contentAlignment = Alignment.Center
+        ) {
+            if (bmp != null) {
+                Image(
+                    bitmap = bmp.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize().padding(16.dp)
+                )
+            }
+            IconButton(
+                onClick = onClose,
+                modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
+            ) {
+                Icon(Icons.Default.Close, contentDescription = "关闭", tint = GptColors.WarmWhite)
+            }
+        }
     }
 }
 
@@ -203,10 +260,7 @@ private fun ChatComposer(state: ChatState, viewModel: MainViewModel, onPick: () 
             .background(GptColors.Onyx)
             .padding(12.dp)
     ) {
-        AspectPresetRow(
-            selected = state.aspectPreset,
-            onToggle = viewModel::toggleAspectPreset
-        )
+        AspectPresetRow(selected = state.aspectPreset, onToggle = viewModel::toggleAspectPreset)
 
         if (state.aspectPreset != null) {
             Text(
@@ -218,6 +272,12 @@ private fun ChatComposer(state: ChatState, viewModel: MainViewModel, onPick: () 
         }
 
         if (state.pendingImages.isNotEmpty()) {
+            Text(
+                "点击下方缩略图把 image 1 / image 2 … 自动加进提示词",
+                color = GptColors.Muted,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.padding(bottom = 8.dp)
@@ -225,6 +285,8 @@ private fun ChatComposer(state: ChatState, viewModel: MainViewModel, onPick: () 
                 items(state.pendingImages.size) { idx ->
                     PendingImageThumb(
                         img = state.pendingImages[idx],
+                        index = idx + 1,
+                        onTap = { viewModel.appendImageTag(idx + 1) },
                         onRemove = { viewModel.removeChatImage(idx) }
                     )
                 }
@@ -243,7 +305,8 @@ private fun ChatComposer(state: ChatState, viewModel: MainViewModel, onPick: () 
                 label = "",
                 placeholder = "输入消息……",
                 modifier = Modifier.weight(1f),
-                minLines = 1
+                minLines = 1,
+                maxLines = 4
             )
             Spacer(Modifier.width(4.dp))
             IconButton(onClick = viewModel::sendChat, enabled = !state.isSending) {
@@ -262,9 +325,14 @@ private fun ChatComposer(state: ChatState, viewModel: MainViewModel, onPick: () 
 }
 
 @Composable
-private fun PendingImageThumb(img: ChatImage, onRemove: () -> Unit) {
+private fun PendingImageThumb(
+    img: ChatImage,
+    index: Int,
+    onTap: () -> Unit,
+    onRemove: () -> Unit
+) {
     val bmp = remember(img.base64) { ImageCodec.decodeBitmap(img.base64, maxSide = 256) }
-    Box(Modifier.size(64.dp)) {
+    Box(Modifier.size(68.dp).clickable(onClick = onTap)) {
         if (bmp != null) {
             Image(
                 bitmap = bmp.asImageBitmap(),
@@ -273,6 +341,19 @@ private fun PendingImageThumb(img: ChatImage, onRemove: () -> Unit) {
                 modifier = Modifier
                     .fillMaxSize()
                     .clip(RoundedCornerShape(8.dp))
+            )
+        }
+        // 序号徽标（左下），用户一看就知道点击后会插入 "image N"
+        Surface(
+            color = GptColors.ChampagneGold,
+            contentColor = GptColors.Obsidian,
+            shape = RoundedCornerShape(6.dp),
+            modifier = Modifier.align(Alignment.BottomStart).padding(3.dp)
+        ) {
+            Text(
+                "image $index",
+                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                style = MaterialTheme.typography.labelSmall
             )
         }
         IconButton(

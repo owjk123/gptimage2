@@ -128,23 +128,32 @@ fun GptTextField(
     modifier: Modifier = Modifier,
     placeholder: String = "",
     singleLine: Boolean = false,
-    minLines: Int = 1
+    minLines: Int = 1,
+    maxLines: Int = Int.MAX_VALUE
 ) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         modifier = modifier.fillMaxWidth(),
-        label = { Text(label, color = GptColors.Muted) },
-        placeholder = { if (placeholder.isNotEmpty()) Text(placeholder, color = GptColors.Muted.copy(alpha = 0.6f)) },
+        label = if (label.isBlank()) null else {
+            { Text(label, color = GptColors.Muted) }
+        },
+        placeholder = if (placeholder.isBlank()) null else {
+            { Text(placeholder, color = GptColors.Muted.copy(alpha = 0.6f)) }
+        },
         singleLine = singleLine,
         minLines = minLines,
+        maxLines = maxLines,
         shape = RoundedCornerShape(10.dp),
+        textStyle = MaterialTheme.typography.bodyMedium.copy(color = GptColors.WarmWhite),
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = GptColors.ChampagneGold,
             unfocusedBorderColor = GptColors.DimGold,
             cursorColor = GptColors.ChampagneGold,
             focusedTextColor = GptColors.WarmWhite,
-            unfocusedTextColor = GptColors.WarmWhite
+            unfocusedTextColor = GptColors.WarmWhite,
+            focusedContainerColor = GptColors.Charcoal,
+            unfocusedContainerColor = GptColors.Charcoal
         )
     )
 }
