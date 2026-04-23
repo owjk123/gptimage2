@@ -2,6 +2,7 @@ package com.gptimage2.ui.screens
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -52,6 +53,8 @@ import com.gptimage2.ui.components.GptTextField
 import com.gptimage2.ui.components.IconActionButton
 import com.gptimage2.ui.theme.GptColors
 import com.gptimage2.util.ImageCodec
+import com.gptimage2.viewmodel.CHAT_ASPECT_PRESETS
+import com.gptimage2.viewmodel.ChatAspectPreset
 import com.gptimage2.viewmodel.ChatState
 import com.gptimage2.viewmodel.MainViewModel
 
@@ -77,7 +80,14 @@ fun ChatScreen(state: ChatState, viewModel: MainViewModel) {
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
+    // IME 修复：把 imePadding 挂在最外层 Column 上，整个聊天区域（包括 messages）
+    // 在键盘弹出时动态收缩，composer 永远贴在 IME 上沿，正在输入的文字始终可见。
+    Column(
+        Modifier
+            .fillMaxSize()
+            .imePadding()
+            .navigationBarsPadding()
+    ) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
             Spacer(Modifier.weight(1f))
             IconActionButton(
@@ -161,15 +171,52 @@ private fun BubbleImage(img: ChatImage) {
 }
 
 @Composable
+private fun AspectPresetRow(selected: ChatAspectPreset?, onToggle: (ChatAspectPreset) -> Unit) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        items(CHAT_ASPECT_PRESETS, key = { it.label }) { preset ->
+            val isSelected = selected?.label == preset.label
+            Surface(
+                onClick = { onToggle(preset) },
+                color = if (isSelected) GptColors.ChampagneGold else GptColors.Charcoal,
+                contentColor = if (isSelected) GptColors.Obsidian else GptColors.Muted,
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, if (isSelected) GptColors.ChampagneGold else GptColors.Steel)
+            ) {
+                Text(
+                    preset.label,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun ChatComposer(state: ChatState, viewModel: MainViewModel, onPick: () -> Unit) {
     Column(
         Modifier
             .fillMaxWidth()
             .background(GptColors.Onyx)
-            .imePadding()
-            .navigationBarsPadding()
             .padding(12.dp)
     ) {
+        AspectPresetRow(
+            selected = state.aspectPreset,
+            onToggle = viewModel::toggleAspectPreset
+        )
+
+        if (state.aspectPreset != null) {
+            Text(
+                "将在提示词前加入：「${state.aspectPreset.prefix}」",
+                color = GptColors.Muted,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(bottom = 6.dp)
+            )
+        }
+
         if (state.pendingImages.isNotEmpty()) {
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),

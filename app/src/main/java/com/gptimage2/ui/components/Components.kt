@@ -169,7 +169,7 @@ fun <T> ChipSelector(
                 contentColor = if (isSelected) GptColors.Obsidian else GptColors.Muted,
                 shape = RoundedCornerShape(20.dp),
                 border = BorderStroke(1.dp, if (isSelected) GptColors.ChampagneGold else GptColors.Steel),
-                modifier = Modifier
+                onClick = { onSelect(item) }
             ) {
                 Row(
                     modifier = Modifier

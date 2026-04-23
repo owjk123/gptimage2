@@ -45,10 +45,21 @@ data class EditState(
     val latestResults: List<String> = emptyList()
 )
 
+data class ChatAspectPreset(val label: String, val prefix: String)
+
+val CHAT_ASPECT_PRESETS = listOf(
+    ChatAspectPreset("方形", "1024×1024 方图 / 1:1 方形构图。"),
+    ChatAspectPreset("横版", "横版 16:9 / 宽屏 16:9 电影画幅。"),
+    ChatAspectPreset("竖版", "竖版 9:16 / 手机海报 9:16。"),
+    ChatAspectPreset("超宽", "横幅 21:9 超宽银幕。"),
+    ChatAspectPreset("经典", "4:3 标准画幅 / 3:2 经典画幅。")
+)
+
 data class ChatState(
     val messages: List<ChatMessage> = emptyList(),
     val draft: String = "",
     val pendingImages: List<ChatImage> = emptyList(),
+    val aspectPreset: ChatAspectPreset? = null,
     val isSending: Boolean = false
 )
 
@@ -58,7 +69,7 @@ data class SettingsState(
 )
 
 data class MainUiState(
-    val tab: AppTab = AppTab.TEXT_TO_IMAGE,
+    val tab: AppTab = AppTab.CHAT,
     val t2i: T2IState = T2IState(),
     val edit: EditState = EditState(),
     val chat: ChatState = ChatState(),
@@ -183,14 +194,20 @@ class MainViewModel(
         }
     }
 
+    fun toggleAspectPreset(preset: ChatAspectPreset) = _ui.update {
+        val next = if (it.chat.aspectPreset?.label == preset.label) null else preset
+        it.copy(chat = it.chat.copy(aspectPreset = next))
+    }
+
     fun resetChat() = _ui.update { it.copy(chat = ChatState()) }
 
     fun sendChat() {
         val chat = _ui.value.chat
         if (chat.draft.isBlank() && chat.pendingImages.isEmpty()) return
+        val prefix = chat.aspectPreset?.let { "${it.prefix} " } ?: ""
         val userMsg = ChatMessage(
             role = ChatRole.USER,
-            text = chat.draft,
+            text = prefix + chat.draft,
             images = chat.pendingImages
         )
         val pending = ChatMessage(role = ChatRole.ASSISTANT, isLoading = true)

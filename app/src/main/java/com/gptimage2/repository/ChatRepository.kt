@@ -126,33 +126,54 @@ class ChatRepository(private val context: Context) {
         var textPart = content
 
         val dataRegex = Regex("""data:(image/[a-zA-Z0-9+\-.]+);base64,([A-Za-z0-9+/=]+)""")
-        dataRegex.findAll(content).forEach { m ->
+
+        // 先把 ![alt](data:image/...) 整个 markdown 外壳一起吞掉，避免残留 ![image]([image])
+        val mdDataRegex = Regex("""!\[[^\]]*\]\((data:image/[a-zA-Z0-9+\-.]+;base64,[A-Za-z0-9+/=]+)\)""")
+        mdDataRegex.findAll(content).forEach { m ->
+            val inner = m.groupValues[1]
+            val d = dataRegex.find(inner) ?: return@forEach
+            images += ChatImage(base64 = d.groupValues[2], mimeType = d.groupValues[1])
+        }
+        textPart = mdDataRegex.replace(textPart, "")
+
+        // 再抓任何裸露的 data URL（没被 markdown 包的）
+        dataRegex.findAll(textPart).forEach { m ->
             images += ChatImage(base64 = m.groupValues[2], mimeType = m.groupValues[1])
         }
-        textPart = dataRegex.replace(textPart, "[image]")
+        textPart = dataRegex.replace(textPart, "")
 
-        val urlRegex = Regex("""https?://[^\s)\]]+\.(?:png|jpe?g|webp)""", RegexOption.IGNORE_CASE)
-        urlRegex.findAll(content).forEach { m ->
-            runCatching {
-                val bytes = downloadBytes(m.value)
-                val mime = when {
-                    m.value.endsWith(".png", true) -> "image/png"
-                    m.value.endsWith(".webp", true) -> "image/webp"
-                    else -> "image/jpeg"
-                }
-                images += ChatImage(
-                    base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP),
-                    mimeType = mime
-                )
-            }
+        // 然后是 markdown 包裹的 http(s) 图片
+        val mdUrlRegex = Regex("""!\[[^\]]*\]\((https?://[^)\s]+\.(?:png|jpe?g|webp))\)""", RegexOption.IGNORE_CASE)
+        mdUrlRegex.findAll(content).forEach { m ->
+            appendRemoteImage(images, m.groupValues[1])
         }
-        textPart = urlRegex.replace(textPart, "[image]")
+        textPart = mdUrlRegex.replace(textPart, "")
+
+        // 最后是裸露的 http(s) 图片地址
+        val urlRegex = Regex("""https?://[^\s)\]]+\.(?:png|jpe?g|webp)""", RegexOption.IGNORE_CASE)
+        urlRegex.findAll(textPart).forEach { m -> appendRemoteImage(images, m.value) }
+        textPart = urlRegex.replace(textPart, "")
 
         return ChatMessage(
             role = ChatRole.ASSISTANT,
             text = textPart.trim(),
             images = images
         )
+    }
+
+    private fun appendRemoteImage(images: MutableList<ChatImage>, url: String) {
+        runCatching {
+            val bytes = downloadBytes(url)
+            val mime = when {
+                url.endsWith(".png", true) -> "image/png"
+                url.endsWith(".webp", true) -> "image/webp"
+                else -> "image/jpeg"
+            }
+            images += ChatImage(
+                base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP),
+                mimeType = mime
+            )
+        }
     }
 
     private fun downloadBytes(url: String): ByteArray {
