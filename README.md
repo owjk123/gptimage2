@@ -1,16 +1,23 @@
 # gptimage2
 
-> 一个接入 [APIYI](https://api.apiyi.com) `gpt-image-2-all` 模型的 Android App。
+> 一个接入 [APIYI](https://api.apiyi.com) GPT Image 2 系列模型的 Android App。
 
-覆盖官方文档列出的三种调用方式：
+OpenAI 在 2026/04 正式发布 ChatGPT Images 2.0（`gpt-image-2`）。APIYI 同步上线两条接入：
+
+| 模型 ID | 计费 | 适用场景 |
+|---------|------|----------|
+| `gpt-image-2-all` | $0.03 / 次，包并发 | **本 App 默认**。反代版，多模态对话直出图 |
+| `gpt-image-2` | 按 token（输入 $8/M、输出 $30/M），单图 ~$0.04–$0.35 | OpenAI 官方代理，原生 2K + 4K 上采样、文字渲染、`input_fidelity` 主体锁定 |
+
+可在「设置 → 模型」里随时切换。三个端点全部可用：
 
 | 功能 | 端点 | 说明 |
 |------|------|------|
-| 📝 文生图 | `POST /v1/images/generations` | JSON 请求，返回 base64 图片 |
-| 🖼 图像编辑 | `POST /v1/images/edits` | multipart，支持 1-4 张参考图（prompt 内以 `image 1` / `image 2` 引用）|
-| 💬 多模态对话 | `POST /v1/chat/completions` | OpenAI 兼容视觉消息格式，回复可含文字和图片 |
+| 💬 多模态对话 | `POST /v1/chat/completions` | OpenAI 视觉消息格式，回复可含文字和图片（默认入口）|
+| 📝 文生图 | `POST /v1/images/generations` | JSON，参数：`model / prompt / size / quality / n` |
+| 🖼 图像编辑 | `POST /v1/images/edits` | multipart，1–4 张参考图（prompt 内以 `image 1` 引用），支持 `input_fidelity` |
 
-附带：本地图库（一键保存到相册）、API Key 本地存储、自定义 Base URL。
+附带：本地图库（一键保存到相册）、API Key + 端口 + 模型本地存储、4 个加速节点（vip / cf / api / b）随时切换。
 
 ---
 
@@ -65,10 +72,13 @@ app/src/main/java/com/gptimage2/
 ## API 约定
 
 - 认证：`Authorization: Bearer <API_KEY>`
-- Base URL 默认：`https://api.apiyi.com`
-- Model：`gpt-image-2-all`
-- 响应格式优先请求 `b64_json`，本地解码成 PNG 保存到 `filesDir/gallery/`。
-- `/v1/images/edits` 使用 multipart，重复追加字段名 `image` 实现多参考图；不要在 OpenAI SDK 的默认 size/n 下发起请求（参考 APIYI 文档说明），本 App 直接用 OkHttp，无此问题。
+- Base URL 默认：`https://api.apiyi.com`（也支持 `vip.apiyi.com` / `api-cf.apiyi.com` / `b.apiyi.com`）
+- Model：默认 `gpt-image-2-all`，也可切到官方 `gpt-image-2`
+- `size`：`gpt-image-2` 接受任意分辨率，长边 ≤ 3840px，两边都是 16 的倍数（亦可传 `auto`）
+- `quality`：`low / medium / high / auto`
+- `input_fidelity`（仅 `/v1/images/edits`）：用于锁定原图主体进行精修
+- 响应格式优先请求 `b64_json`，本地解码成 PNG 保存到 `filesDir/gallery/`
+- `/v1/images/edits` 使用 multipart，重复追加字段名 `image` 实现多参考图；不要在 OpenAI SDK 的默认 size/n 下发起请求（参考 APIYI 文档说明），本 App 直接用 OkHttp，无此问题
 
 ## 注意事项
 

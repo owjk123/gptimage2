@@ -65,7 +65,8 @@ data class ChatState(
 
 data class SettingsState(
     val apiKey: String = "",
-    val baseUrl: String = ApiKeyManager.DEFAULT_BASE_URL
+    val baseUrl: String = ApiKeyManager.DEFAULT_BASE_URL,
+    val model: String = ApiKeyManager.DEFAULT_MODEL
 )
 
 data class MainUiState(
@@ -89,7 +90,8 @@ class MainViewModel(
     private val _ui = MutableStateFlow(MainUiState(
         settings = SettingsState(
             apiKey = ApiKeyManager.loadApiKey(appContext),
-            baseUrl = ApiKeyManager.loadBaseUrl(appContext)
+            baseUrl = ApiKeyManager.loadBaseUrl(appContext),
+            model = ApiKeyManager.loadModel(appContext)
         )
     ))
     val uiState: StateFlow<MainUiState> = _ui.asStateFlow()
@@ -272,11 +274,13 @@ class MainViewModel(
     // ── Settings ────────────────────────────────────────────
     fun updateApiKeyDraft(v: String) = _ui.update { it.copy(settings = it.settings.copy(apiKey = v)) }
     fun updateBaseUrlDraft(v: String) = _ui.update { it.copy(settings = it.settings.copy(baseUrl = v)) }
+    fun updateModelDraft(v: String) = _ui.update { it.copy(settings = it.settings.copy(model = v)) }
 
     fun saveSettings() {
         val s = _ui.value.settings
         ApiKeyManager.saveApiKey(appContext, s.apiKey)
         ApiKeyManager.saveBaseUrl(appContext, s.baseUrl.ifBlank { ApiKeyManager.DEFAULT_BASE_URL })
+        ApiKeyManager.saveModel(appContext, s.model.ifBlank { ApiKeyManager.DEFAULT_MODEL })
         showToast("设置已保存")
     }
 

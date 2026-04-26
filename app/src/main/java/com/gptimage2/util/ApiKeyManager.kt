@@ -10,7 +10,9 @@ object ApiKeyManager {
     private const val PREFS_NAME = "gptimage2_prefs"
     private const val KEY_API_KEY = "api_key"
     private const val KEY_BASE_URL = "base_url"
+    private const val KEY_MODEL = "model"
     const val DEFAULT_BASE_URL = "https://api.apiyi.com"
+    const val DEFAULT_MODEL = "gpt-image-2-all"
 
     private val _apiKey = MutableStateFlow("")
     val apiKey: StateFlow<String> = _apiKey.asStateFlow()
@@ -38,6 +40,16 @@ object ApiKeyManager {
     fun loadBaseUrl(context: Context): String {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getString(KEY_BASE_URL, DEFAULT_BASE_URL) ?: DEFAULT_BASE_URL
+    }
+
+    fun saveModel(context: Context, model: String) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putString(KEY_MODEL, model.trim()).apply()
+    }
+
+    fun loadModel(context: Context): String {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_MODEL, DEFAULT_MODEL) ?: DEFAULT_MODEL
     }
 
     fun hasKey(context: Context) = loadApiKey(context).isNotBlank()

@@ -28,19 +28,22 @@ class ImageGenRepository(private val context: Context) {
     private val gson = Gson()
 
     private val apiKey get() = ApiKeyManager.loadApiKey(context)
+    private val model get() = ApiKeyManager.loadModel(context)
     private val endpoint get() = "${ApiKeyManager.loadBaseUrl(context)}/v1/images/generations"
 
     suspend fun generate(
         prompt: String,
         size: String,
-        count: Int
+        count: Int,
+        quality: String = "auto"
     ): Result<List<String>> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) return@withContext Result.failure(Exception("请先在设置中填写 API Key"))
         try {
             val body = JsonObject().apply {
-                addProperty("model", MODEL)
+                addProperty("model", model)
                 addProperty("prompt", prompt)
                 if (size != "auto") addProperty("size", size)
+                if (quality != "auto") addProperty("quality", quality)
                 addProperty("n", count)
                 addProperty("response_format", "b64_json")
             }
@@ -65,7 +68,10 @@ class ImageGenRepository(private val context: Context) {
     }
 
     companion object {
+        /** Default model id; runtime model is read from ApiKeyManager. */
         const val MODEL = "gpt-image-2-all"
+        const val MODEL_OFFICIAL = "gpt-image-2"
+        val SUPPORTED_MODELS = listOf(MODEL, MODEL_OFFICIAL)
         private const val TAG = "ImageGenRepo"
         val JSON_MEDIA = "application/json".toMediaType()
     }

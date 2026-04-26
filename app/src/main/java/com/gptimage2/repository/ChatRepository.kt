@@ -44,8 +44,9 @@ class ChatRepository(private val context: Context) {
 
     suspend fun send(history: List<ChatMessage>): Result<ChatMessage> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) return@withContext Result.failure(Exception("请先在设置中填写 API Key"))
+        val model = ApiKeyManager.loadModel(context)
         val bodyJson = gson.toJson(JsonObject().apply {
-            addProperty("model", ImageGenRepository.MODEL)
+            addProperty("model", model)
             addProperty("stream", false)
             add("messages", buildMessages(history))
         })
