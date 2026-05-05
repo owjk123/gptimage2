@@ -88,13 +88,32 @@ class ChatRepository(private val context: Context) {
 
     private fun buildMessages(history: List<ChatMessage>): JsonArray {
         val arr = JsonArray()
+        var lastRole: String? = null
         for (msg in history) {
             if (msg.isLoading || msg.errorMessage != null) continue
+            val isUser = msg.role == ChatRole.USER
+            val role = if (isUser) "user" else "assistant"
+
+            // 防御：如果跳过 error assistant 导致连续两条 user，插入空 assistant 占位
+            if (role == "user" && lastRole == "user") {
+                arr.add(JsonObject().apply {
+                    addProperty("role", "assistant")
+                    addProperty("content", "[请求失败，已重试]")
+                })
+            }
+
             val obj = JsonObject()
-            obj.addProperty("role", if (msg.role == ChatRole.USER) "user" else "assistant")
-            if (msg.images.isEmpty()) {
+            obj.addProperty("role", role)
+            if (!isUser) {
+                // assistant 消息只传文本，绝不能带 image_url
+                // OpenAI chat/completions API 不支持 assistant 角色 image_url，
+                // 且 base64 图片会让请求体爆炸导致 API 忽略历史或报错
+                val text = msg.text.ifBlank { "[已生成图片]" }
+                obj.addProperty("content", text)
+            } else if (msg.images.isEmpty()) {
                 obj.addProperty("content", msg.text)
             } else {
+                // user 消息可以带图片（多模态）
                 val content = JsonArray()
                 if (msg.text.isNotBlank()) {
                     content.add(JsonObject().apply {
@@ -113,6 +132,7 @@ class ChatRepository(private val context: Context) {
                 obj.add("content", content)
             }
             arr.add(obj)
+            lastRole = role
         }
         return arr
     }
