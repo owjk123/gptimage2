@@ -105,7 +105,7 @@ class ImageEditRepository(private val context: Context) {
 
         val raw = response.body?.string()
         if (!response.isSuccessful || raw == null) {
-            return Result.failure(Exception(errorFor(response.code, raw)))
+            return Result.failure(Exception(editErrorFor(response.code, raw)))
         }
         return Result.success(parseImages(raw))
     }
@@ -170,7 +170,7 @@ class ImageEditRepository(private val context: Context) {
 
         val raw = response.body?.string()
         if (!response.isSuccessful || raw == null) {
-            return Result.failure(Exception(errorFor(response.code, raw)))
+            return Result.failure(Exception(editErrorFor(response.code, raw)))
         }
         return Result.success(parseChatImages(raw))
     }
@@ -243,7 +243,7 @@ class ImageEditRepository(private val context: Context) {
     }
 }
 
-internal fun errorFor(code: Int, raw: String?): String = when (code) {
+private fun editErrorFor(code: Int, raw: String?): String = when (code) {
     400 -> "请求参数错误: ${raw?.take(200) ?: "-"}"
     401 -> "API Key 无效，请在设置中重新填写"
     402 -> "余额不足，请到 apiyi.com 充值"
