@@ -293,7 +293,7 @@ fun GoldSlider(
 }
 
 @Composable
-fun GroupedChipSelector<T>(
+fun <T> GroupedChipSelector(
     items: List<T>,
     selected: T,
     labelOf: (T) -> String,
