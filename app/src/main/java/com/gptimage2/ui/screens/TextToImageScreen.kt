@@ -132,7 +132,8 @@ fun TextToImageScreen(
                     items = ImageSize.ALL,
                     selected = state.size,
                     labelOf = { it.label },
-                    groupOf = { it.group.label }
+                    groupOf = { it.group.label },
+                    onSelect = viewModel::selectT2ISize
                 )
                 Spacer(Modifier.height(12.dp))
                 SectionLabel("数量")
