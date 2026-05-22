@@ -2,6 +2,7 @@ package com.gptimage2.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -113,18 +115,29 @@ fun SettingsScreen(state: SettingsState, viewModel: MainViewModel) {
             )
         }
 
-        GoldButton(
-            text = "保存配置",
-            onClick = viewModel::saveSettings,
-            leadingIcon = Icons.Default.Save,
-            modifier = Modifier.fillMaxWidth()
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            GoldButton(
+                text = "保存配置",
+                onClick = viewModel::saveSettings,
+                leadingIcon = Icons.Default.Save,
+                modifier = Modifier.weight(1f)
+            )
+            GoldButton(
+                text = "测试连接",
+                onClick = viewModel::testConnection,
+                leadingIcon = Icons.Default.NetworkCheck,
+                modifier = Modifier.weight(1f)
+            )
+        }
 
         GptCard {
             SectionLabel("支持的端点")
             Spacer(Modifier.height(6.dp))
             Text("• POST /v1/chat/completions（多模态对话，本 App 主入口）", color = GptColors.Muted, style = MaterialTheme.typography.bodySmall)
-            Text("• POST /v1/images/generations（文生图）", color = GptColors.Muted, style = MaterialTheme.typography.bodySmall)
+            Text("• POST /v1/images/generations（文生图，支持质量、格式、压缩参数）", color = GptColors.Muted, style = MaterialTheme.typography.bodySmall)
             Text("• POST /v1/images/edits（多图编辑，input_fidelity 可锁定主体）", color = GptColors.Muted, style = MaterialTheme.typography.bodySmall)
         }
 
@@ -133,6 +146,7 @@ fun SettingsScreen(state: SettingsState, viewModel: MainViewModel) {
             Spacer(Modifier.height(6.dp))
             Text(
                 "• gpt-image-2-all 走对话直出图，最稳；gpt-image-2 用官方代理，按 token 计费，质量更高但要等 API 通道开放。\n" +
+                "• gpt-image-2 官方模型支持：quality（low/medium/high/auto）、output_format（png/jpeg/webp）、output_compression（1-100）、input_fidelity（0.0-1.0）。\n" +
                 "• API Key 仅存储在本机 SharedPreferences，不会上传。\n" +
                 "• 若返回「连接被中断」，切换 API 端口（vip / cf / api / b）通常可恢复。",
                 color = GptColors.Muted,
