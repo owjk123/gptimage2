@@ -136,7 +136,8 @@ fun ImageEditScreen(state: EditState, viewModel: MainViewModel) {
                     items = ImageSize.ALL,
                     selected = state.size,
                     labelOf = { it.label },
-                    groupOf = { it.group.label }
+                    groupOf = { it.group.label },
+                    onSelect = viewModel::selectEditSize
                 )
                 Spacer(Modifier.height(12.dp))
                 SectionLabel("数量")
