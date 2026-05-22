@@ -1,19 +1,14 @@
 package com.gptimage2.viewmodel
 
 import android.content.Context
+import android.content.Intent
+import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.room.Room
 import com.gptimage2.data.local.GptImageDatabase
-import com.gptimage2.data.model.ChatImage
-import com.gptimage2.data.model.ChatMessage
-import com.gptimage2.data.model.ChatRole
-import com.gptimage2.data.model.EditReference
-import com.gptimage2.data.model.EndpointKind
-import com.gptimage2.data.model.GalleryImage
-import com.gptimage2.data.model.ImageSize
-import com.gptimage2.data.model.OutputCount
+import com.gptimage2.data.model.*
 import com.gptimage2.repository.ChatRepository
 import com.gptimage2.repository.GalleryRepository
 import com.gptimage2.repository.ImageEditRepository
@@ -24,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.File
 import java.util.UUID
 
 enum class AppTab { TEXT_TO_IMAGE, IMAGE_EDIT, CHAT, GALLERY, SETTINGS }
@@ -32,6 +28,10 @@ data class T2IState(
     val prompt: String = "",
     val size: ImageSize = ImageSize.SQUARE_1024,
     val count: OutputCount = OutputCount.ONE,
+    val quality: Quality = Quality.AUTO,
+    val outputFormat: OutputFormat = OutputFormat.PNG,
+    val outputCompression: Int = 90,
+    val selectedTemplate: PromptTemplate? = null,
     val isGenerating: Boolean = false,
     val latestResults: List<String> = emptyList()
 )
@@ -40,6 +40,10 @@ data class EditState(
     val prompt: String = "",
     val size: ImageSize = ImageSize.AUTO,
     val count: OutputCount = OutputCount.ONE,
+    val quality: Quality = Quality.AUTO,
+    val outputFormat: OutputFormat = OutputFormat.PNG,
+    val outputCompression: Int = 90,
+    val inputFidelity: Float = 0.5f,
     val references: List<EditReference> = emptyList(),
     val isGenerating: Boolean = false,
     val latestResults: List<String> = emptyList()
@@ -69,6 +73,17 @@ data class SettingsState(
     val model: String = ApiKeyManager.DEFAULT_MODEL
 )
 
+enum class GalleryFilter(val label: String) {
+    ALL("全部"),
+    T2I("文生图"),
+    EDIT("图像编辑"),
+    CHAT("对话")
+}
+
+data class GalleryState(
+    val filter: GalleryFilter = GalleryFilter.ALL
+)
+
 data class MainUiState(
     val tab: AppTab = AppTab.CHAT,
     val t2i: T2IState = T2IState(),
@@ -76,6 +91,7 @@ data class MainUiState(
     val chat: ChatState = ChatState(),
     val settings: SettingsState = SettingsState(),
     val gallery: List<GalleryImage> = emptyList(),
+    val galleryState: GalleryState = GalleryState(),
     val toastMessage: String? = null
 )
 
@@ -113,13 +129,32 @@ class MainViewModel(
     fun updateT2IPrompt(v: String) = _ui.update { it.copy(t2i = it.t2i.copy(prompt = v)) }
     fun selectT2ISize(v: ImageSize) = _ui.update { it.copy(t2i = it.t2i.copy(size = v)) }
     fun selectT2ICount(v: OutputCount) = _ui.update { it.copy(t2i = it.t2i.copy(count = v)) }
+    fun selectT2IQuality(v: Quality) = _ui.update { it.copy(t2i = it.t2i.copy(quality = v)) }
+    fun selectT2IOutputFormat(v: OutputFormat) = _ui.update { it.copy(t2i = it.t2i.copy(outputFormat = v)) }
+    fun updateT2ICompression(v: Int) = _ui.update { it.copy(t2i = it.t2i.copy(outputCompression = v)) }
+    fun selectT2ITemplate(v: PromptTemplate?) {
+        _ui.update { it.copy(t2i = it.t2i.copy(selectedTemplate = v)) }
+        v?.let { t ->
+            val currentPrompt = _ui.value.t2i.prompt
+            val prefix = if (currentPrompt.isBlank()) t.prefix else "${t.prefix} $currentPrompt"
+            updateT2IPrompt(prefix)
+        }
+    }
 
     fun runTextToImage() {
         val st = _ui.value.t2i
         if (st.prompt.isBlank()) { showToast("请输入提示词"); return }
         _ui.update { it.copy(t2i = it.t2i.copy(isGenerating = true, latestResults = emptyList())) }
         viewModelScope.launch {
-            val result = imageGen.generate(st.prompt, st.size.value, st.count.value)
+            val isOfficialModel = ApiKeyManager.loadModel(appContext).contains("gpt-image-2")
+            val result = imageGen.generate(
+                prompt = st.prompt,
+                size = st.size.value,
+                count = st.count.value,
+                quality = st.quality.value,
+                outputFormat = if (isOfficialModel) st.outputFormat.value else null,
+                outputCompression = if (isOfficialModel && st.outputFormat != OutputFormat.PNG) st.outputCompression else null
+            )
             result.onSuccess { imgs ->
                 imgs.forEach { b64 ->
                     galleryRepo.saveGenerated(
@@ -143,6 +178,10 @@ class MainViewModel(
     fun updateEditPrompt(v: String) = _ui.update { it.copy(edit = it.edit.copy(prompt = v)) }
     fun selectEditSize(v: ImageSize) = _ui.update { it.copy(edit = it.edit.copy(size = v)) }
     fun selectEditCount(v: OutputCount) = _ui.update { it.copy(edit = it.edit.copy(count = v)) }
+    fun selectEditQuality(v: Quality) = _ui.update { it.copy(edit = it.edit.copy(quality = v)) }
+    fun selectEditOutputFormat(v: OutputFormat) = _ui.update { it.copy(edit = it.edit.copy(outputFormat = v)) }
+    fun updateEditCompression(v: Int) = _ui.update { it.copy(edit = it.edit.copy(outputCompression = v)) }
+    fun updateEditInputFidelity(v: Float) = _ui.update { it.copy(edit = it.edit.copy(inputFidelity = v)) }
 
     fun addEditReference(ref: EditReference) {
         val current = _ui.value.edit.references
@@ -159,7 +198,17 @@ class MainViewModel(
         if (st.references.isEmpty()) { showToast("请至少添加一张参考图"); return }
         _ui.update { it.copy(edit = it.edit.copy(isGenerating = true, latestResults = emptyList())) }
         viewModelScope.launch {
-            val result = imageEdit.edit(st.prompt, st.size.value, st.count.value, st.references)
+            val isOfficialModel = ApiKeyManager.loadModel(appContext).contains("gpt-image-2")
+            val result = imageEdit.edit(
+                prompt = st.prompt,
+                size = st.size.value,
+                count = st.count.value,
+                references = st.references,
+                quality = st.quality.value,
+                outputFormat = if (isOfficialModel) st.outputFormat.value else null,
+                outputCompression = if (isOfficialModel && st.outputFormat != OutputFormat.PNG) st.outputCompression else null,
+                inputFidelity = if (isOfficialModel) st.inputFidelity else null
+            )
             result.onSuccess { imgs ->
                 imgs.forEach { b64 ->
                     galleryRepo.saveGenerated(
@@ -256,6 +305,48 @@ class MainViewModel(
     }
 
     // ── Gallery ─────────────────────────────────────────────
+    fun setGalleryFilter(filter: GalleryFilter) =
+        _ui.update { it.copy(galleryState = it.galleryState.copy(filter = filter)) }
+
+    fun getFilteredGallery(): List<GalleryImage> {
+        val filter = _ui.value.galleryState.filter
+        val all = _ui.value.gallery
+        return when (filter) {
+            GalleryFilter.ALL -> all
+            GalleryFilter.T2I -> all.filter { it.endpoint == EndpointKind.TEXT_TO_IMAGE.name }
+            GalleryFilter.EDIT -> all.filter { it.endpoint == EndpointKind.IMAGE_EDIT.name }
+            GalleryFilter.CHAT -> all.filter { it.endpoint == EndpointKind.CHAT.name }
+        }
+    }
+
+    fun shareGalleryImage(image: GalleryImage) {
+        viewModelScope.launch {
+            val file = File(image.imagePath)
+            if (!file.exists()) {
+                showToast("图片文件不存在")
+                return@launch
+            }
+            try {
+                val uri = FileProvider.getUriForFile(
+                    appContext,
+                    "${appContext.packageName}.fileprovider",
+                    file
+                )
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "image/*"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                appContext.startActivity(Intent.createChooser(shareIntent, "分享图片").apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
+            } catch (e: Exception) {
+                showToast("分享失败: ${e.message}")
+            }
+        }
+    }
+
     fun saveToAlbum(image: GalleryImage) {
         viewModelScope.launch {
             val r = galleryRepo.saveToAlbum(image.id, image.imagePath)
@@ -282,6 +373,18 @@ class MainViewModel(
         ApiKeyManager.saveBaseUrl(appContext, s.baseUrl.ifBlank { ApiKeyManager.DEFAULT_BASE_URL })
         ApiKeyManager.saveModel(appContext, s.model.ifBlank { ApiKeyManager.DEFAULT_MODEL })
         showToast("设置已保存")
+    }
+
+    fun testConnection() {
+        viewModelScope.launch {
+            showToast("正在测试连接...")
+            val result = imageGen.testConnection()
+            result.onSuccess {
+                showToast("连接成功 ✓")
+            }.onFailure { e ->
+                showToast("连接失败: ${e.message}")
+            }
+        }
     }
 
     class Factory(private val context: Context) : ViewModelProvider.Factory {
