@@ -27,6 +27,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -247,5 +249,112 @@ fun EmptyHint(text: String, modifier: Modifier = Modifier) {
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(24.dp)
         )
+    }
+}
+
+@Composable
+fun GoldSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    modifier: Modifier = Modifier,
+    steps: Int = 0,
+    valueLabel: String? = null
+) {
+    Column(modifier = modifier) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = valueLabel ?: "",
+                style = MaterialTheme.typography.labelSmall,
+                color = GptColors.Muted
+            )
+            Text(
+                text = if (steps > 0) "${value.toInt()}" else String.format("%.2f", value),
+                style = MaterialTheme.typography.labelSmall,
+                color = GptColors.ChampagneGold
+            )
+        }
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = valueRange,
+            steps = steps,
+            colors = SliderDefaults.colors(
+                thumbColor = GptColors.ChampagneGold,
+                activeTrackColor = GptColors.ChampagneGold,
+                inactiveTrackColor = GptColors.Steel
+            )
+        )
+    }
+}
+
+@Composable
+fun GroupedChipSelector<T>(
+    items: List<T>,
+    selected: T,
+    labelOf: (T) -> String,
+    groupOf: (T) -> String,
+    onSelect: (T) -> Unit,
+    modifier: Modifier = Modifier,
+    groupLabelOf: (String) -> String = { it }
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        val grouped = items.groupBy { groupOf(it) }
+        grouped.forEach { (group, groupItems) ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = groupLabelOf(group),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = GptColors.Muted,
+                    modifier = Modifier.width(48.dp)
+                )
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(count = groupItems.size) { idx ->
+                        val item = groupItems[idx]
+                        val isSelected = item == selected
+                        Surface(
+                            color = if (isSelected) GptColors.ChampagneGold else GptColors.Charcoal,
+                            contentColor = if (isSelected) GptColors.Obsidian else GptColors.Muted,
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.dp, if (isSelected) GptColors.ChampagneGold else GptColors.Steel),
+                            onClick = { onSelect(item) }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .heightIn(min = 30.dp)
+                                    .padding(horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (isSelected) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(12.dp),
+                                        tint = GptColors.Obsidian
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                }
+                                Text(
+                                    labelOf(item),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = LocalContentColor.current
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+        }
     }
 }
