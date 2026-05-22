@@ -10,7 +10,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.gptimage2"
+        applicationId = "com.gptimage2.pro"
         minSdk = 26
         targetSdk = 35
         versionCode = 4
