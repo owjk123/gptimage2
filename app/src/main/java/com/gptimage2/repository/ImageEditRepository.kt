@@ -31,6 +31,7 @@ class ImageEditRepository(private val context: Context) {
         .connectTimeout(60, TimeUnit.SECONDS)
         .readTimeout(600, TimeUnit.SECONDS)
         .writeTimeout(180, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
 
     private val gson = Gson()
@@ -47,7 +48,10 @@ class ImageEditRepository(private val context: Context) {
         size: String,
         count: Int,
         references: List<EditReference>,
-        quality: String = "auto"
+        quality: String = "auto",
+        outputFormat: String? = null,
+        outputCompression: Int? = null,
+        inputFidelity: Float? = null
     ): Result<List<String>> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) return@withContext Result.failure(Exception("请先在设置中填写 API Key"))
         if (references.isEmpty()) return@withContext Result.failure(Exception("至少需要一张参考图"))
@@ -56,7 +60,7 @@ class ImageEditRepository(private val context: Context) {
             if (usesChatPath()) {
                 editViaChat(prompt, size, count, references, quality)
             } else {
-                editViaEditsEndpoint(prompt, size, count, references, quality)
+                editViaEditsEndpoint(prompt, size, count, references, quality, outputFormat, outputCompression, inputFidelity)
             }
         } catch (e: Exception) {
             Log.e("ImageEditRepo", "edit failed", e)
@@ -73,7 +77,10 @@ class ImageEditRepository(private val context: Context) {
         size: String,
         count: Int,
         references: List<EditReference>,
-        quality: String
+        quality: String,
+        outputFormat: String?,
+        outputCompression: Int?,
+        inputFidelity: Float?
     ): Result<List<String>> {
         val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
             .addFormDataPart("model", model)
@@ -85,6 +92,15 @@ class ImageEditRepository(private val context: Context) {
         if (count > 1) builder.addFormDataPart("n", count.toString())
         if (size != "auto") builder.addFormDataPart("size", size)
         if (quality != "auto") builder.addFormDataPart("quality", quality)
+        
+        // Only add output_format and output_compression for official model
+        if (!outputFormat.isNullOrBlank()) {
+            builder.addFormDataPart("output_format", outputFormat)
+            outputCompression?.let { builder.addFormDataPart("output_compression", it.toString()) }
+        }
+        
+        // input_fidelity controls reference image subject preservation (only for official model)
+        inputFidelity?.let { builder.addFormDataPart("input_fidelity", it.toString()) }
 
         references.forEachIndexed { idx, ref ->
             val ext = if (ref.mimeType.endsWith("png")) "png" else "jpg"
@@ -203,9 +219,9 @@ class ImageEditRepository(private val context: Context) {
         val images = mutableListOf<String>()
 
         // Match ![alt](data:image/...;base64,...) markdown images
-        val mdDataRegex = Regex("""!\[[^\]]*\]\((data:image/[a-zA-Z0-9+\-.]+;base64,([A-Za-z0-9+/=]+))\)""")
+        val mdDataRegex = Regex("""!\[([^\]]*)\]\((data:image/[a-zA-Z0-9+\-.]+;base64,([A-Za-z0-9+/=]+))\)""")
         mdDataRegex.findAll(content).forEach { m ->
-            images += m.groupValues[2]
+            images += m.groupValues[3]
         }
 
         // Match bare data:image/...;base64,... URLs
@@ -217,9 +233,9 @@ class ImageEditRepository(private val context: Context) {
         textPart = dataRegex.replace(textPart, "")
 
         // Match ![alt](https://...png/jpg/webp)
-        val mdUrlRegex = Regex("""!\[[^\]]*\]\((https?://[^)\s]+\.(?:png|jpe?g|webp))\)""", RegexOption.IGNORE_CASE)
+        val mdUrlRegex = Regex("""!\[([^\]]*)\]\((https?://[^)\s]+\.(?:png|jpe?g|webp))\)""", RegexOption.IGNORE_CASE)
         mdUrlRegex.findAll(content).forEach { m ->
-            val b64 = runCatching { downloadAsBase64(m.groupValues[1]) }.getOrNull()
+            val b64 = runCatching { downloadAsBase64(m.groupValues[2]) }.getOrNull()
             if (b64 != null) images += b64
         }
 
