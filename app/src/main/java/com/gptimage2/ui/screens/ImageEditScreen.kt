@@ -5,6 +5,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,15 +37,20 @@ import androidx.compose.ui.unit.dp
 import com.gptimage2.data.model.EditReference
 import com.gptimage2.data.model.ImageSize
 import com.gptimage2.data.model.OutputCount
+import com.gptimage2.data.model.Quality
+import com.gptimage2.data.model.OutputFormat
 import com.gptimage2.ui.components.ChipSelector
 import com.gptimage2.ui.components.EmptyHint
 import com.gptimage2.ui.components.GoldButton
 import com.gptimage2.ui.components.GoldDivider
+import com.gptimage2.ui.components.GoldSlider
+import com.gptimage2.ui.components.GroupedChipSelector
 import com.gptimage2.ui.components.GptCard
 import com.gptimage2.ui.components.GptTextField
 import com.gptimage2.ui.components.OutlineGoldButton
 import com.gptimage2.ui.components.SectionLabel
 import com.gptimage2.ui.theme.GptColors
+import com.gptimage2.util.ApiKeyManager
 import com.gptimage2.util.ImageCodec
 import com.gptimage2.viewmodel.EditState
 import com.gptimage2.viewmodel.MainViewModel
@@ -66,6 +73,10 @@ fun ImageEditScreen(state: EditState, viewModel: MainViewModel) {
                 EditReference(bytes = uploadBytes, mimeType = "image/jpeg", previewBase64 = preview)
             )
         }
+    }
+
+    val isOfficialModel = remember { 
+        ApiKeyManager.loadModel(context).contains("gpt-image-2")
     }
 
     LazyColumn(
@@ -121,10 +132,11 @@ fun ImageEditScreen(state: EditState, viewModel: MainViewModel) {
             GptCard {
                 SectionLabel("尺寸")
                 Spacer(Modifier.height(8.dp))
-                ChipSelector(
-                    items = ImageSize.values().toList(),
+                GroupedChipSelector(
+                    items = ImageSize.ALL,
                     selected = state.size,
                     labelOf = { it.label },
+                    groupOf = { it.group.label },
                     onSelect = viewModel::selectEditSize
                 )
                 Spacer(Modifier.height(12.dp))
@@ -136,6 +148,60 @@ fun ImageEditScreen(state: EditState, viewModel: MainViewModel) {
                     labelOf = { it.label },
                     onSelect = viewModel::selectEditCount
                 )
+            }
+        }
+
+        item {
+            GptCard {
+                SectionLabel("质量")
+                Spacer(Modifier.height(8.dp))
+                ChipSelector(
+                    items = Quality.ALL,
+                    selected = state.quality,
+                    labelOf = { it.label },
+                    onSelect = viewModel::selectEditQuality
+                )
+                
+                if (isOfficialModel) {
+                    Spacer(Modifier.height(12.dp))
+                    SectionLabel("输出格式")
+                    Spacer(Modifier.height(8.dp))
+                    ChipSelector(
+                        items = OutputFormat.ALL,
+                        selected = state.outputFormat,
+                        labelOf = { it.label },
+                        onSelect = viewModel::selectEditOutputFormat
+                    )
+                    
+                    if (state.outputFormat != OutputFormat.PNG) {
+                        Spacer(Modifier.height(12.dp))
+                        GoldSlider(
+                            value = state.outputCompression.toFloat(),
+                            onValueChange = { viewModel.updateEditCompression(it.toInt()) },
+                            valueRange = 1f..100f,
+                            valueLabel = "压缩质量",
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    
+                    // input_fidelity slider for official model
+                    Spacer(Modifier.height(12.dp))
+                    SectionLabel("主体保真度")
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "控制参考图主体与生成结果的相似程度（仅官方模型有效）",
+                        color = GptColors.Muted,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    GoldSlider(
+                        value = state.inputFidelity,
+                        onValueChange = { viewModel.updateEditInputFidelity(it) },
+                        valueRange = 0f..1f,
+                        valueLabel = "保真度",
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         }
 
@@ -161,7 +227,9 @@ fun ImageEditScreen(state: EditState, viewModel: MainViewModel) {
         } else {
             item {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(state.latestResults, key = { it.hashCode() }) { b64 -> Base64Thumbnail(b64) }
+                    items(state.latestResults, key = { it.hashCode() }) { b64 ->
+                        Base64Thumbnail(b64)
+                    }
                 }
             }
         }
@@ -184,7 +252,10 @@ private fun ReferenceThumb(ref: EditReference, onRemove: () -> Unit) {
         }
         IconButton(
             onClick = onRemove,
-            modifier = Modifier.align(Alignment.TopEnd).size(28.dp).padding(2.dp)
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .size(28.dp)
+                .padding(2.dp)
         ) {
             Icon(Icons.Default.Close, contentDescription = "移除", tint = GptColors.WarmWhite)
         }
