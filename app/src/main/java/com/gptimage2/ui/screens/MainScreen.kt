@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -65,9 +67,11 @@ fun MainScreen(uiState: MainUiState, viewModel: MainViewModel) {
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize().background(GptColors.Obsidian)) {
             when (uiState.tab) {
+                AppTab.TEXT_TO_IMAGE -> TextToImageScreen(uiState.t2i, viewModel)
+                AppTab.IMAGE_EDIT -> ImageEditScreen(uiState.edit, viewModel)
+                AppTab.CHAT -> ChatScreen(uiState.chat, viewModel)
                 AppTab.GALLERY -> GalleryScreen(uiState.gallery, viewModel)
                 AppTab.SETTINGS -> SettingsScreen(uiState.settings, viewModel)
-                else -> ChatScreen(uiState.chat, viewModel)
             }
         }
     }
@@ -76,13 +80,11 @@ fun MainScreen(uiState: MainUiState, viewModel: MainViewModel) {
 @Composable
 private fun BottomBar(current: AppTab, onSelect: (AppTab) -> Unit) {
     NavigationBar(containerColor = GptColors.Onyx, contentColor = GptColors.WarmWhite) {
-        val effective = when (current) {
-            AppTab.GALLERY, AppTab.SETTINGS -> current
-            else -> AppTab.CHAT
-        }
-        entry(effective, AppTab.CHAT, "对话", Icons.Default.Chat, onSelect)
-        entry(effective, AppTab.GALLERY, "图库", Icons.Default.PhotoLibrary, onSelect)
-        entry(effective, AppTab.SETTINGS, "设置", Icons.Default.Settings, onSelect)
+        entry(current, AppTab.TEXT_TO_IMAGE, "生图", Icons.Default.PhotoCamera, onSelect)
+        entry(current, AppTab.IMAGE_EDIT, "编辑", Icons.Default.Edit, onSelect)
+        entry(current, AppTab.CHAT, "对话", Icons.Default.Chat, onSelect)
+        entry(current, AppTab.GALLERY, "图库", Icons.Default.PhotoLibrary, onSelect)
+        entry(current, AppTab.SETTINGS, "设置", Icons.Default.Settings, onSelect)
     }
 }
 
