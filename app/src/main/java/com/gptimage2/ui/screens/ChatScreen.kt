@@ -1,5 +1,8 @@
 package com.gptimage2.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -29,6 +32,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Badge
@@ -37,6 +41,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -60,12 +65,15 @@ import com.gptimage2.data.model.ChatRole
 import com.gptimage2.ui.components.EmptyHint
 import com.gptimage2.ui.components.GptTextField
 import com.gptimage2.ui.components.IconActionButton
+import com.gptimage2.ui.components.OutlineGoldButton
 import com.gptimage2.ui.theme.GptColors
 import com.gptimage2.util.ImageCodec
 import com.gptimage2.viewmodel.CHAT_ASPECT_PRESETS
 import com.gptimage2.viewmodel.ChatAspectPreset
 import com.gptimage2.viewmodel.ChatState
 import com.gptimage2.viewmodel.MainViewModel
+import java.io.File
+import java.io.FileOutputStream
 
 @Composable
 fun ChatScreen(state: ChatState, viewModel: MainViewModel) {
@@ -130,7 +138,19 @@ fun ChatScreen(state: ChatState, viewModel: MainViewModel) {
         )
     }
 
-    previewImage?.let { img -> FullScreenPreview(img, onClose = { previewImage = null }) }
+    previewImage?.let { img ->
+        FullScreenPreview(
+            img = img,
+            onClose = { previewImage = null },
+            onDownload = {
+                // 保存到临时文件并通知
+                val bytes = ImageCodec.base64ToBytes(img.base64)
+                val file = File(context.cacheDir, "chat_image_${System.currentTimeMillis()}.png")
+                FileOutputStream(file).use { it.write(bytes) }
+                viewModel.showToastPublic("图片已保存到缓存: ${file.name}")
+            }
+        )
+    }
 }
 
 @Composable
@@ -171,7 +191,6 @@ private fun MessageBubble(msg: ChatMessage, onImageTap: (ChatImage) -> Unit) {
                         )
                     }
                 } else if (msg.text.isNotBlank()) {
-                    // SelectionContainer 让长按可选中复制
                     SelectionContainer {
                         Text(msg.text, color = GptColors.WarmWhite, style = MaterialTheme.typography.bodyMedium)
                     }
@@ -198,8 +217,8 @@ private fun BubbleImage(img: ChatImage, onTap: () -> Unit) {
 }
 
 @Composable
-private fun FullScreenPreview(img: ChatImage, onClose: () -> Unit) {
-    val bmp = remember(img.base64) { ImageCodec.decodeBitmap(img.base64, maxSide = 2048) }
+private fun FullScreenPreview(img: ChatImage, onClose: () -> Unit, onDownload: () -> Unit) {
+    val bmp = remember(img.base64) { ImageCodec.decodeBitmap(img.base64, maxSide = 4096) }
     Dialog(
         onDismissRequest = onClose,
         properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = true)
@@ -207,8 +226,7 @@ private fun FullScreenPreview(img: ChatImage, onClose: () -> Unit) {
         Box(
             Modifier
                 .fillMaxSize()
-                .background(GptColors.Obsidian.copy(alpha = 0.95f))
-                .clickable(onClick = onClose),
+                .background(GptColors.Obsidian),
             contentAlignment = Alignment.Center
         ) {
             if (bmp != null) {
@@ -219,11 +237,19 @@ private fun FullScreenPreview(img: ChatImage, onClose: () -> Unit) {
                     modifier = Modifier.fillMaxSize().padding(16.dp)
                 )
             }
-            IconButton(
-                onClick = onClose,
-                modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
+            // 顶部工具栏
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Icon(Icons.Default.Close, contentDescription = "关闭", tint = GptColors.WarmWhite)
+                IconButton(onClick = onDownload) {
+                    Icon(Icons.Default.Download, contentDescription = "下载", tint = GptColors.ChampagneGold)
+                }
+                IconButton(onClick = onClose) {
+                    Icon(Icons.Default.Close, contentDescription = "关闭", tint = GptColors.WarmWhite)
+                }
             }
         }
     }
