@@ -6,6 +6,8 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.gptimage2.util.ApiKeyManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -31,6 +33,11 @@ class ImageGenRepository(private val context: Context) {
     private val model get() = ApiKeyManager.loadModel(context)
     private val endpoint get() = "${ApiKeyManager.loadBaseUrl(context)}/v1/images/generations"
 
+    /**
+     * Generate images with parallel support.
+     * For models that only support n=1 (official gpt-image-2),
+     * spawns parallel requests instead of one request with n=count.
+     */
     suspend fun generate(
         prompt: String,
         size: String,
@@ -38,6 +45,49 @@ class ImageGenRepository(private val context: Context) {
         quality: String = "auto"
     ): Result<List<String>> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) return@withContext Result.failure(Exception("请先在设置中填写 API Key"))
+
+        // Check if model needs parallel requests (official gpt-image-2 only supports n=1)
+        val needsParallel = model == "gpt-image-2" || count <= 1
+
+        if (needsParallel && count > 1) {
+            // Parallel: launch count requests, each n=1
+            val deferreds = (1..count).map { idx ->
+                async {
+                    Log.d("ImageGenRepo", "Starting parallel request $idx/$count")
+                    generateSingle(prompt, size, quality)
+                }
+            }
+            val results = deferreds.awaitAll()
+
+            // Collect all successful images
+            val images = mutableListOf<String>()
+            val errors = mutableListOf<String>()
+            results.forEachIndexed { idx, r ->
+                r.onSuccess { images.addAll(it) }
+                    .onFailure { errors.add("请求 ${idx+1}: ${it.message}") }
+            }
+
+            if (images.isEmpty() && errors.isNotEmpty()) {
+                Result.failure(Exception("全部失败: ${errors.first()}"))
+            } else if (images.size < count) {
+                Log.w("ImageGenRepo", "Partial success: ${images.size}/$count")
+                Result.success(images)
+            } else {
+                Result.success(images)
+            }
+        } else {
+            // Single request with n=count (for proxy models that support it)
+            generateSingle(prompt, size, quality, count)
+        }
+    }
+
+    /** Generate one batch of images (single request) */
+    private suspend fun generateSingle(
+        prompt: String,
+        size: String,
+        quality: String,
+        count: Int = 1
+    ): Result<List<String>> = withContext(Dispatchers.IO) {
         try {
             val body = JsonObject().apply {
                 addProperty("model", model)
@@ -62,7 +112,7 @@ class ImageGenRepository(private val context: Context) {
             }
             Result.success(parseImages(raw))
         } catch (e: Exception) {
-            Log.e(TAG, "generate failed", e)
+            Log.e("ImageGenRepo", "generateSingle failed", e)
             Result.failure(e)
         }
     }
