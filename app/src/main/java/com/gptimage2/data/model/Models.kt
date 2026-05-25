@@ -4,7 +4,7 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 import java.util.UUID
 
-/** APIYI 提供的四个 HTTP 端口（16888 协议）。 */
+/** APIYI 提供的两个 HTTP 端口（16888 协议）。 */
 data class ApiEndpoint(val label: String, val url: String)
 
 val API_ENDPOINTS = listOf(
@@ -21,17 +21,22 @@ enum class EndpointKind(val label: String, val short: String) {
     CHAT("多模态对话", "CHAT")
 }
 
+/**
+ * 根据 APIYI 官方文档的标准分辨率预设
+ * 来源: https://help.apiyi.com/why-choose-apiyi-gpt-image-2-official-api.html
+ */
 enum class ImageSize(val label: String, val value: String) {
     AUTO("自动", "auto"),
-    SQUARE_1024("1024×1024", "1024x1024"),
-    PORTRAIT_1024_1792("1024×1792 竖", "1024x1792"),
-    LANDSCAPE_1792_1024("1792×1024 横", "1792x1024"),
-    SQUARE_2048("2048×2048 (2K)", "2048x2048"),
-    PORTRAIT_1440_2560("1440×2560 (2K竖)", "1440x2560"),
-    LANDSCAPE_2560_1440("2560×1440 (2K横)", "2560x1440"),
-    SQUARE_4096("4096×4096 (4K)", "4096x4096"),
-    PORTRAIT_2160_3840("2160×3840 (4K竖)", "2160x3840"),
-    LANDSCAPE_3840_2160("3840×2160 (4K横)", "3840x2160")
+    SQUARE_1024("1024×1024 (1:1)", "1024x1024"),
+    PORTRAIT_1024_1536("1024×1536 (2:3 竖版)", "1024x1536"),
+    LANDSCAPE_1536_1024("1536×1024 (3:2 横版)", "1536x1024"),
+    PORTRAIT_1024_1792("1024×1792 (9:16 竖屏)", "1024x1792"),
+    LANDSCAPE_1792_1024("1792×1024 (16:9 宽屏)", "1792x1024"),
+    SQUARE_2048("2048×2048 (2K 方形)", "2048x2048"),
+    LANDSCAPE_2048_1152("2048×1152 (16:9)", "2048x1152"),
+    LANDSCAPE_2560_1440("2560×1440 (2K+ 实验性)", "2560x1440"),
+    LANDSCAPE_3840_2160("3840×2160 (4K 宽屏)", "3840x2160"),
+    PORTRAIT_2160_3840("2160×3840 (4K 竖屏)", "2160x3840")
 }
 
 enum class OutputCount(val label: String, val value: Int) {
