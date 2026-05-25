@@ -31,6 +31,8 @@ import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -309,15 +311,33 @@ private fun ChatComposer(state: ChatState, viewModel: MainViewModel, onPick: () 
                 maxLines = 4
             )
             Spacer(Modifier.width(4.dp))
-            IconButton(onClick = viewModel::sendChat, enabled = !state.isSending) {
-                if (state.isSending) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
-                        color = GptColors.ChampagneGold,
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Icon(Icons.Default.Send, contentDescription = "发送", tint = GptColors.ChampagneGold)
+            // 支持连续提交：按钮始终可用，有进行中任务时显示计数徽标
+            val pendingCount = state.messages.count { it.isLoading }
+            IconButton(onClick = viewModel::sendChat) {
+                BadgedBox(
+                    badge = {
+                        if (pendingCount > 0) {
+                            Badge(
+                                containerColor = GptColors.ChampagneGold,
+                                contentColor = GptColors.Obsidian
+                            ) {
+                                Text(
+                                    pendingCount.toString(),
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+                        }
+                    }
+                ) {
+                    if (pendingCount > 0) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            color = GptColors.ChampagneGold,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(Icons.Default.Send, contentDescription = "发送", tint = GptColors.ChampagneGold)
+                    }
                 }
             }
         }
