@@ -24,8 +24,14 @@ enum class EndpointKind(val label: String, val short: String) {
 enum class ImageSize(val label: String, val value: String) {
     AUTO("自动", "auto"),
     SQUARE_1024("1024×1024", "1024x1024"),
-    PORTRAIT_1024_1536("1024×1536 竖", "1024x1536"),
-    LANDSCAPE_1536_1024("1536×1024 横", "1536x1024")
+    PORTRAIT_1024_1792("1024×1792 竖", "1024x1792"),
+    LANDSCAPE_1792_1024("1792×1024 横", "1792x1024"),
+    SQUARE_2048("2048×2048 (2K)", "2048x2048"),
+    PORTRAIT_1440_2560("1440×2560 (2K竖)", "1440x2560"),
+    LANDSCAPE_2560_1440("2560×1440 (2K横)", "2560x1440"),
+    SQUARE_4096("4096×4096 (4K)", "4096x4096"),
+    PORTRAIT_2160_3840("2160×3840 (4K竖)", "2160x3840"),
+    LANDSCAPE_3840_2160("3840×2160 (4K横)", "3840x2160")
 }
 
 enum class OutputCount(val label: String, val value: Int) {
