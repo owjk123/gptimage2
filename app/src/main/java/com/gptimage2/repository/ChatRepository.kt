@@ -42,12 +42,13 @@ class ChatRepository(private val context: Context) {
     private val apiKey get() = ApiKeyManager.loadApiKey(context)
     private val endpoint get() = "${ApiKeyManager.loadBaseUrl(context)}/v1/chat/completions"
 
-    suspend fun send(history: List<ChatMessage>): Result<ChatMessage> = withContext(Dispatchers.IO) {
+    suspend fun send(history: List<ChatMessage>, size: String = "1024x1024"): Result<ChatMessage> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) return@withContext Result.failure(Exception("请先在设置中填写 API Key"))
         val model = ApiKeyManager.loadModel(context)
         val bodyJson = gson.toJson(JsonObject().apply {
             addProperty("model", model)
             addProperty("stream", false)
+            if (size != "auto") addProperty("size", size)
             add("messages", buildMessages(history))
         })
 
@@ -97,6 +98,56 @@ class ChatRepository(private val context: Context) {
             // 防御：如果跳过 error assistant 导致连续两条 user，插入空 assistant 占位
             if (role == "user" && lastRole == "user") {
                 arr.add(JsonObject().apply {
+                    addProperty("role", "assistant")
+                    addProperty("content", "[请求失败，已重试]")
+                })
+            }
+
+            val obj = JsonObject()
+            obj.addProperty("role", role)
+            if (!isUser) {
+                // assistant 消息只传文本，绝不能带 image_url
+                // OpenAI chat/completions API 不支持 assistant 角色 image_url，
+                // 且 base64 图片会让请求体爆炸导致 API 忽略历史或报错
+                val text = msg.text.ifBlank { "[已生成图片]" }
+                obj.addProperty("content", text)
+            } else if (msg.images.isEmpty()) {
+                obj.addProperty("content", msg.text)
+            } else {
+                // user 消息可以带图片（多模态）
+                val content = JsonArray()
+                if (msg.text.isNotBlank()) {
+                    content.add(JsonObject().apply {
+                        addProperty("type", "text")
+                        addProperty("text", msg.text)
+                    })
+                }
+                for (img in msg.images) {
+                    content.add(JsonObject().apply {
+                        addProperty("type", "image_url")
+                        add("image_url", JsonObject().apply {
+                            addProperty("url", "data:${img.mimeType};base64,${img.base64}")
+                        })
+                    })
+                }
+                obj.add("content", content)
+            }
+            arr.add(obj)
+            lastRole = role
+        }
+        return arr
+    }
+
+    private fun parseReply(raw: String): ChatMessage {
+        val root = JsonParser.parseString(raw).asJsonObject
+        val choice = root.getAsJsonArray("choices")?.firstOrNull()?.asJsonObject
+            ?: throw Exception(root.getAsJsonObject("error")?.get("message")?.asString ?: "空响应")
+        val content = choice.getAsJsonObject("message").get("content").asString
+
+        val images = mutableListOf<ChatImage>()
+        var textPart = content
+
+        val dataRegex = Regex("""data:(image/[a-zA-Z0-9+\-.]+);base64,([A-Za-z0-9+/=]+)""")
                     addProperty("role", "assistant")
                     addProperty("content", "[请求失败，已重试]")
                 })
@@ -202,3 +253,4 @@ class ChatRepository(private val context: Context) {
         return resp.body?.bytes() ?: throw Exception("下载图片失败")
     }
 }
+
