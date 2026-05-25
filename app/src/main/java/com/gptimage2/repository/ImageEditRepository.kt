@@ -10,6 +10,8 @@ import com.google.gson.JsonParser
 import com.gptimage2.data.model.EditReference
 import com.gptimage2.util.ApiKeyManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -42,6 +44,10 @@ class ImageEditRepository(private val context: Context) {
     private fun usesChatPath(): Boolean =
         model.contains("2-all", ignoreCase = true) || model.contains("gpt-image-2-all", ignoreCase = true)
 
+    /**
+     * Edit images with parallel support.
+     * Official gpt-image-2 only supports n=1 per request, so we spawn parallel requests.
+     */
     suspend fun edit(
         prompt: String,
         size: String,
@@ -52,127 +58,163 @@ class ImageEditRepository(private val context: Context) {
         if (apiKey.isBlank()) return@withContext Result.failure(Exception("请先在设置中填写 API Key"))
         if (references.isEmpty()) return@withContext Result.failure(Exception("至少需要一张参考图"))
 
-        try {
-            if (usesChatPath()) {
-                editViaChat(prompt, size, count, references, quality)
-            } else {
-                editViaEditsEndpoint(prompt, size, count, references, quality)
+        // For official gpt-image-2, use parallel requests (only supports n=1)
+        val needsParallel = model == "gpt-image-2" || count <= 1
+
+        if (needsParallel && count > 1) {
+            // Parallel: launch count requests, each with 1 image
+            val deferreds = (1..count).map { idx ->
+                async {
+                    Log.d("ImageEditRepo", "Starting parallel edit request $idx/$count")
+                    if (usesChatPath()) {
+                        editViaChatSingle(prompt, size, references, quality)
+                    } else {
+                        editViaEditsEndpointSingle(prompt, size, references, quality)
+                    }
+                }
             }
+            val results = deferreds.awaitAll()
+
+            // Collect all successful images
+            val images = mutableListOf<String>()
+            val errors = mutableListOf<String>()
+            results.forEachIndexed { idx, r ->
+                r.onSuccess { images.addAll(it) }
+                    .onFailure { errors.add("请求 ${idx+1}: ${it.message}") }
+            }
+
+            if (images.isEmpty() && errors.isNotEmpty()) {
+                Result.failure(Exception("全部失败: ${errors.first()}"))
+            } else if (images.size < count) {
+                Log.w("ImageEditRepo", "Partial success: ${images.size}/$count")
+                Result.success(images)
+            } else {
+                Result.success(images)
+            }
+        } else {
+            // Single request with n=count
+            if (usesChatPath()) {
+                editViaChatSingle(prompt, size, references, quality, count)
+            } else {
+                editViaEditsEndpointSingle(prompt, size, references, quality, count)
+            }
+        }
+    }
+
+    /**
+     * Official gpt-image-2 path: single request to /v1/images/edits
+     */
+    private suspend fun editViaEditsEndpointSingle(
+        prompt: String,
+        size: String,
+        references: List<EditReference>,
+        quality: String,
+        count: Int = 1
+    ): Result<List<String>> = withContext(Dispatchers.IO) {
+        try {
+            val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
+                .addFormDataPart("model", model)
+                .addFormDataPart("prompt", prompt)
+                .addFormDataPart("response_format", "b64_json")
+
+            // n parameter for proxy models (official only supports n=1)
+            if (model != "gpt-image-2") builder.addFormDataPart("n", count.toString())
+            if (size != "auto") builder.addFormDataPart("size", size)
+            if (quality != "auto") builder.addFormDataPart("quality", quality)
+
+            references.forEachIndexed { idx, ref ->
+                val ext = if (ref.mimeType.endsWith("png")) "png" else "jpg"
+                builder.addFormDataPart(
+                    "image",
+                    "ref_${idx + 1}_${UUID.randomUUID()}.$ext",
+                    ref.bytes.toRequestBody(ref.mimeType.toMediaType())
+                )
+            }
+
+            val response = client.newCall(
+                Request.Builder()
+                    .url("$baseUrl/v1/images/edits")
+                    .header("Authorization", "Bearer $apiKey")
+                    .post(builder.build())
+                    .build()
+            ).execute()
+
+            val raw = response.body?.string()
+            if (!response.isSuccessful || raw == null) {
+                return@withContext Result.failure(Exception(editErrorFor(response.code, raw)))
+            }
+            Result.success(parseImages(raw))
         } catch (e: Exception) {
-            Log.e("ImageEditRepo", "edit failed", e)
             Result.failure(e)
         }
     }
 
     /**
-     * Official gpt-image-2 path: multipart/form-data to /v1/images/edits
-     * Reference images uploaded as file parts.
+     * gpt-image-2-all (reverse-proxy) path: single request to /v1/chat/completions
      */
-    private fun editViaEditsEndpoint(
+    private suspend fun editViaChatSingle(
         prompt: String,
         size: String,
-        count: Int,
         references: List<EditReference>,
-        quality: String
-    ): Result<List<String>> {
-        val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
-            .addFormDataPart("model", model)
-            .addFormDataPart("prompt", prompt)
-            .addFormDataPart("response_format", "b64_json")
+        quality: String,
+        count: Int = 1
+    ): Result<List<String>> = withContext(Dispatchers.IO) {
+        try {
+            // Build the user message with text + image_url content blocks
+            val contentArr = JsonArray()
 
-        // NOTE: gpt-image-2 only supports n=1; if count > 1, the caller should
-        // handle parallel requests. We still send the parameter for compatibility.
-        if (count > 1) builder.addFormDataPart("n", count.toString())
-        if (size != "auto") builder.addFormDataPart("size", size)
-        if (quality != "auto") builder.addFormDataPart("quality", quality)
+            // Add reference images first
+            references.forEachIndexed { idx, ref ->
+                val b64 = Base64.encodeToString(ref.bytes, Base64.NO_WRAP)
+                contentArr.add(JsonObject().apply {
+                    addProperty("type", "image_url")
+                    add("image_url", JsonObject().apply {
+                        addProperty("url", "data:${ref.mimeType};base64,$b64")
+                    })
+                })
+            }
 
-        references.forEachIndexed { idx, ref ->
-            val ext = if (ref.mimeType.endsWith("png")) "png" else "jpg"
-            builder.addFormDataPart(
-                "image",
-                "ref_${idx + 1}_${UUID.randomUUID()}.$ext",
-                ref.bytes.toRequestBody(ref.mimeType.toMediaType())
-            )
-        }
+            // Build enhanced prompt with size/quality hints
+            val enhancedPrompt = buildString {
+                append(prompt)
+                if (size != "auto") append("\nOutput size: $size")
+                if (quality != "auto") append(", quality: $quality")
+                if (count > 1) append("\nGenerate $count images")
+            }
 
-        val response = client.newCall(
-            Request.Builder()
-                .url("$baseUrl/v1/images/edits")
-                .header("Authorization", "Bearer $apiKey")
-                .post(builder.build())
-                .build()
-        ).execute()
-
-        val raw = response.body?.string()
-        if (!response.isSuccessful || raw == null) {
-            return Result.failure(Exception(editErrorFor(response.code, raw)))
-        }
-        return Result.success(parseImages(raw))
-    }
-
-    /**
-     * gpt-image-2-all (reverse-proxy) path: JSON to /v1/chat/completions
-     * Reference images sent as image_url content blocks.
-     * Prompt should reference images as "image 1", "image 2", etc.
-     */
-    private fun editViaChat(
-        prompt: String,
-        size: String,
-        count: Int,
-        references: List<EditReference>,
-        quality: String
-    ): Result<List<String>> {
-        // Build the user message with text + image_url content blocks
-        val contentArr = JsonArray()
-
-        // Add reference images first
-        references.forEachIndexed { idx, ref ->
-            val b64 = Base64.encodeToString(ref.bytes, Base64.NO_WRAP)
             contentArr.add(JsonObject().apply {
-                addProperty("type", "image_url")
-                add("image_url", JsonObject().apply {
-                    addProperty("url", "data:${ref.mimeType};base64,$b64")
-                })
+                addProperty("type", "text")
+                addProperty("text", enhancedPrompt)
             })
-        }
 
-        // Build enhanced prompt with size/quality hints
-        val enhancedPrompt = buildString {
-            append(prompt)
-            if (size != "auto") append("\nOutput size: $size")
-            if (quality != "auto") append(", quality: $quality")
-        }
-
-        contentArr.add(JsonObject().apply {
-            addProperty("type", "text")
-            addProperty("text", enhancedPrompt)
-        })
-
-        val body = JsonObject().apply {
-            addProperty("model", model)
-            addProperty("stream", false)
-            add("messages", JsonArray().apply {
-                add(JsonObject().apply {
-                    addProperty("role", "user")
-                    add("content", contentArr)
+            val body = JsonObject().apply {
+                addProperty("model", model)
+                addProperty("stream", false)
+                add("messages", JsonArray().apply {
+                    add(JsonObject().apply {
+                        addProperty("role", "user")
+                        add("content", contentArr)
+                    })
                 })
-            })
-        }
+            }
 
-        val response = client.newCall(
-            Request.Builder()
-                .url("$baseUrl/v1/chat/completions")
-                .header("Authorization", "Bearer $apiKey")
-                .header("Content-Type", "application/json")
-                .post(gson.toJson(body).toRequestBody("application/json".toMediaType()))
-                .build()
-        ).execute()
+            val response = client.newCall(
+                Request.Builder()
+                    .url("$baseUrl/v1/chat/completions")
+                    .header("Authorization", "Bearer $apiKey")
+                    .header("Content-Type", "application/json")
+                    .post(gson.toJson(body).toRequestBody("application/json".toMediaType()))
+                    .build()
+            ).execute()
 
-        val raw = response.body?.string()
-        if (!response.isSuccessful || raw == null) {
-            return Result.failure(Exception(editErrorFor(response.code, raw)))
+            val raw = response.body?.string()
+            if (!response.isSuccessful || raw == null) {
+                return@withContext Result.failure(Exception(editErrorFor(response.code, raw)))
+            }
+            Result.success(parseChatImages(raw))
+        } catch (e: Exception) {
+            Result.failure(e)
         }
-        return Result.success(parseChatImages(raw))
     }
 
     /** Parse images/edits response: { data: [ {b64_json | url} ] } */
