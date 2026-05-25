@@ -62,6 +62,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.gptimage2.data.model.ChatImage
 import com.gptimage2.data.model.ChatMessage
 import com.gptimage2.data.model.ChatRole
+import com.gptimage2.data.model.ImageSize
 import com.gptimage2.ui.components.EmptyHint
 import com.gptimage2.ui.components.GptTextField
 import com.gptimage2.ui.components.IconActionButton
@@ -289,6 +290,8 @@ private fun ChatComposer(state: ChatState, viewModel: MainViewModel, onPick: () 
             .padding(12.dp)
     ) {
         AspectPresetRow(selected = state.aspectPreset, onToggle = viewModel::toggleAspectPreset)
+        Spacer(Modifier.height(6.dp))
+        SizePresetRow(selected = state.sizePreset, onSelect = viewModel::selectChatSize)
 
         if (state.aspectPreset != null) {
             Text(
@@ -410,3 +413,30 @@ private fun PendingImageThumb(
         }
     }
 }
+
+
+
+@Composable
+private fun SizePresetRow(selected: ImageSize, onSelect: (ImageSize) -> Unit) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        items(ImageSize.values(), key = { it.name }) { size ->
+            Surface(
+                onClick = { onSelect(size) },
+                color = if (selected.name == size.name) GptColors.ChampagneGold else GptColors.Charcoal,
+                contentColor = if (selected.name == size.name) GptColors.Obsidian else GptColors.Muted,
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, if (selected.name == size.name) GptColors.ChampagneGold else GptColors.Steel)
+            ) {
+                Text(
+                    size.label,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+        }
+    }
+}
+
