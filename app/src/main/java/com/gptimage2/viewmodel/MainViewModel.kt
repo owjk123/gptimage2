@@ -33,6 +33,7 @@ data class T2IState(
     val size: ImageSize = ImageSize.SQUARE_1024,
     val count: OutputCount = OutputCount.ONE,
     val isGenerating: Boolean = false,
+    val completedCount: Int = 0,
     val latestResults: List<String> = emptyList()
 )
 
@@ -42,6 +43,7 @@ data class EditState(
     val count: OutputCount = OutputCount.ONE,
     val references: List<EditReference> = emptyList(),
     val isGenerating: Boolean = false,
+    val completedCount: Int = 0,
     val latestResults: List<String> = emptyList()
 )
 
@@ -117,7 +119,7 @@ class MainViewModel(
     fun runTextToImage() {
         val st = _ui.value.t2i
         if (st.prompt.isBlank()) { showToast("请输入提示词"); return }
-        _ui.update { it.copy(t2i = it.t2i.copy(isGenerating = true, latestResults = emptyList())) }
+        _ui.update { it.copy(t2i = it.t2i.copy(isGenerating = true, completedCount = 0, latestResults = emptyList())) }
         viewModelScope.launch {
             val result = imageGen.generate(st.prompt, st.size.value, st.count.value)
             result.onSuccess { imgs ->
@@ -130,8 +132,8 @@ class MainViewModel(
                         endpoint = EndpointKind.TEXT_TO_IMAGE.name
                     )
                 }
-                _ui.update { it.copy(t2i = it.t2i.copy(isGenerating = false, latestResults = imgs)) }
-                showToast("生成完成")
+                _ui.update { it.copy(t2i = it.t2i.copy(isGenerating = false, completedCount = imgs.size, latestResults = imgs)) }
+                showToast("生成完成: ${imgs.size} 张")
             }.onFailure { e ->
                 _ui.update { it.copy(t2i = it.t2i.copy(isGenerating = false)) }
                 showToast("生成失败: ${e.message}")
@@ -157,7 +159,7 @@ class MainViewModel(
         val st = _ui.value.edit
         if (st.prompt.isBlank()) { showToast("请输入提示词"); return }
         if (st.references.isEmpty()) { showToast("请至少添加一张参考图"); return }
-        _ui.update { it.copy(edit = it.edit.copy(isGenerating = true, latestResults = emptyList())) }
+        _ui.update { it.copy(edit = it.edit.copy(isGenerating = true, completedCount = 0, latestResults = emptyList())) }
         viewModelScope.launch {
             val result = imageEdit.edit(st.prompt, st.size.value, st.count.value, st.references)
             result.onSuccess { imgs ->
@@ -170,8 +172,8 @@ class MainViewModel(
                         endpoint = EndpointKind.IMAGE_EDIT.name
                     )
                 }
-                _ui.update { it.copy(edit = it.edit.copy(isGenerating = false, latestResults = imgs)) }
-                showToast("编辑完成")
+                _ui.update { it.copy(edit = it.edit.copy(isGenerating = false, completedCount = imgs.size, latestResults = imgs)) }
+                showToast("编辑完成: ${imgs.size} 张")
             }.onFailure { e ->
                 _ui.update { it.copy(edit = it.edit.copy(isGenerating = false)) }
                 showToast("编辑失败: ${e.message}")
