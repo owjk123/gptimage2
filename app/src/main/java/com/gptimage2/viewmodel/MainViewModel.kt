@@ -62,6 +62,7 @@ data class ChatState(
     val draft: String = "",
     val pendingImages: List<ChatImage> = emptyList(),
     val aspectPreset: ChatAspectPreset? = null,
+    val sizePreset: ImageSize = ImageSize.SQUARE_1024,
     val isSending: Boolean = false
 )
 
@@ -203,11 +204,8 @@ class MainViewModel(
         it.copy(chat = it.chat.copy(aspectPreset = next))
     }
 
-    /** Append "image N" (1-based) to the draft, preserving existing text. */
-    fun appendImageTag(index: Int) = _ui.update {
-        val draft = it.chat.draft
-        val sep = if (draft.isEmpty() || draft.endsWith(" ") || draft.endsWith("\n")) "" else " "
-        it.copy(chat = it.chat.copy(draft = draft + sep + "image $index"))
+    fun selectChatSize(size: ImageSize) = _ui.update {
+        it.copy(chat = it.chat.copy(sizePreset = size))
     }
 
     fun resetChat() = _ui.update { it.copy(chat = ChatState()) }
@@ -232,7 +230,7 @@ class MainViewModel(
         }
         viewModelScope.launch {
             val context = _ui.value.chat.messages.filter { m -> !m.isLoading }
-            val result = chatRepo.send(context)
+            val result = chatRepo.send(context, _ui.value.chat.sizePreset.value)
             _ui.update { state ->
                 val newList = state.chat.messages.toMutableList()
                 val idx = newList.indexOfFirst { it.id == pending.id }
@@ -249,7 +247,7 @@ class MainViewModel(
                         id = UUID.randomUUID().toString(),
                         base64Data = img.base64,
                         prompt = userMsg.text.ifBlank { "(chat)" },
-                        size = "-",
+                        size = _ui.value.chat.sizePreset.label,
                         endpoint = EndpointKind.CHAT.name
                     )
                 }
