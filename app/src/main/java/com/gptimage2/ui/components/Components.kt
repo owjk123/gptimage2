@@ -55,7 +55,8 @@ fun GoldButton(
     Button(
         onClick = onClick,
         modifier = modifier.heightIn(min = 48.dp),
-        enabled = enabled && !loading,
+        // 移除 !loading 限制，支持连续提交多个生成任务
+        enabled = enabled,
         shape = RoundedCornerShape(10.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = GptColors.ChampagneGold,
