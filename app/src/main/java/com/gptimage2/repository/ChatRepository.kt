@@ -9,6 +9,7 @@ import com.google.gson.JsonParser
 import com.gptimage2.data.model.ChatImage
 import com.gptimage2.data.model.ChatMessage
 import com.gptimage2.data.model.ChatRole
+import com.gptimage2.data.model.ImageSize
 import com.gptimage2.util.ApiKeyManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -42,13 +43,13 @@ class ChatRepository(private val context: Context) {
     private val apiKey get() = ApiKeyManager.loadApiKey(context)
     private val endpoint get() = "${ApiKeyManager.loadBaseUrl(context)}/v1/chat/completions"
 
-    suspend fun send(history: List<ChatMessage>, size: String = "1024x1024"): Result<ChatMessage> = withContext(Dispatchers.IO) {
+    suspend fun send(history: List<ChatMessage>, size: ImageSize = ImageSize.SQUARE_1024): Result<ChatMessage> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) return@withContext Result.failure(Exception("请先在设置中填写 API Key"))
         val model = ApiKeyManager.loadModel(context)
         val bodyJson = gson.toJson(JsonObject().apply {
             addProperty("model", model)
             addProperty("stream", false)
-            if (size != "auto") addProperty("size", size)
+            if (size != "auto") addProperty("size", size.value)
             add("messages", buildMessages(history))
         })
 
