@@ -1,5 +1,9 @@
 name: Build gptimage2 APK
 
+permissions:
+  contents: write
+  actions: read
+
 on:
   push:
     branches:
