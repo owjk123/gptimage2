@@ -32,7 +32,18 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Setup Gradle
+      - name: Generate Gradle Wrapper (if missing)
+        run: |
+          if [ ! -f gradlew ]; then
+            echo "gradlew not found, generating..."
+            wget -q https://services.gradle.org/distributions/gradle-8.9-bin.zip -O /tmp/gradle.zip
+            unzip -q /tmp/gradle.zip -d /tmp/gradle-dist
+            /tmp/gradle-dist/gradle-8.9/bin/gradle wrapper --gradle-version 8.9
+            chmod +x gradlew
+          fi
+          ls -la gradlew gradle/wrapper/
+
+      - name: Setup Gradle Cache
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: wrapper
@@ -80,8 +91,7 @@ jobs:
             - 改进的 b64_json 前缀兼容处理
 
             ### 🛠 修复
-            - CI/CD 构建流程优化：使用 Gradle wrapper，移除手动下载
-            - 自动创建 GitHub Release 并上传 APK 产物
+            - CI/CD 构建流程优化：使用 Gradle wrapper + action cache
 
             ### 📦 下载
             - `gptimage2-Release-v1.3.0.apk` — 正式版 APK
