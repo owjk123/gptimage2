@@ -48,7 +48,7 @@ class ChatRepository(private val context: Context) {
         val bodyJson = gson.toJson(JsonObject().apply {
             addProperty("model", model)
             addProperty("stream", false)
-            if (size != "auto") addProperty("size", size.value)
+            if (size != ImageSize.AUTO) addProperty("size", size.value)
             add("messages", buildMessages(history))
         })
 

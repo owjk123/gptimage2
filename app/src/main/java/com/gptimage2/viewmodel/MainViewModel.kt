@@ -199,6 +199,14 @@ class MainViewModel(
         }
     }
 
+    fun appendImageTag(index: Int) {
+        _ui.update {
+            it.copy(chat = it.chat.copy(
+                draft = it.chat.draft + " image " + index
+            ))
+        }
+    }
+
     fun toggleAspectPreset(preset: ChatAspectPreset) = _ui.update {
         val next = if (it.chat.aspectPreset?.label == preset.label) null else preset
         it.copy(chat = it.chat.copy(aspectPreset = next))
@@ -230,7 +238,7 @@ class MainViewModel(
         }
         viewModelScope.launch {
             val context = _ui.value.chat.messages.filter { m -> !m.isLoading }
-            val result = chatRepo.send(context, _ui.value.chat.sizePreset.value)
+            val result = chatRepo.send(context, _ui.value.chat.sizePreset)
             _ui.update { state ->
                 val newList = state.chat.messages.toMutableList()
                 val idx = newList.indexOfFirst { it.id == pending.id }
