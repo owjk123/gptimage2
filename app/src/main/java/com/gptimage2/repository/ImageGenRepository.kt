@@ -79,63 +79,65 @@ class ImageGenRepository(private val context: Context) {
         isVip: Boolean,
         count: Int = 1
     ): Result<List<String>> {
-        var lastError: Exception? = null
         val maxAttempts = 3
         val retryDelayMs = 15_000L
 
         for (attempt in 1..maxAttempts) {
-            val result = withContext(Dispatchers.IO) {
-                try {
-                    val body = JsonObject().apply {
-                        addProperty("model", model)
-                        addProperty("prompt", prompt)
-                        if (size != "auto") addProperty("size", size)
-                        if (!isVip) {
-                            if (quality != "auto") addProperty("quality", quality)
-                            addProperty("n", count)
-                        }
-                        addProperty("response_format", "b64_json")
-                    }
-
-                    val response = client.newCall(
-                        Request.Builder()
-                            .url(endpoint)
-                            .header("Authorization", "Bearer $apiKey")
-                            .header("Content-Type", "application/json")
-                            .post(gson.toJson(body).toRequestBody(JSON_MEDIA))
-                            .build()
-                    ).execute()
-
-                    val raw = response.body?.string()
-                    val code = response.code
-
-                    if (code in 500..599 && attempt < maxAttempts && code != 501) {
-                        Log.w("ImageGenRepo", "Attempt $attempt failed with $code, retrying in ${retryDelayMs}ms...")
-                        return@withContext Result.failure(RetryableException(code, raw))
-                    }
-
-                    if (!response.isSuccessful || raw == null) {
-                        return@withContext Result.failure(Exception(errorFor(code, raw)))
-                    }
-                    Result.success(parseImages(raw))
-                } catch (e: Exception) {
-                    if (e is RetryableException) return@withContext Result.failure(e)
-                    Log.e("ImageGenRepo", "generateSingle failed", e)
-                    Result.failure(e)
-                }
+            val result = doGenerateSingle(prompt, size, quality, isVip, count, attempt, maxAttempts)
+            if (result.isSuccess) return result
+            val err = result.exceptionOrNull()
+            if (err is RetryableException && attempt < maxAttempts) {
+                Log.w("ImageGenRepo", "Attempt $attempt failed with HTTP ${err.code}, retrying in ${retryDelayMs}ms...")
+                delay(retryDelayMs)
+                continue
             }
-
-            result.onSuccess { return it }
-            result.onFailure { e ->
-                if (e is RetryableException) {
-                    lastError = e
-                    delay(retryDelayMs)
-                    continue
-                }
-                return result
-            }
+            return result
         }
-        return Result.failure(lastError ?: Exception("请求失败（已重试 $maxAttempts 次）"))
+        return Result.failure(Exception("请求失败（已重试 $maxAttempts 次）"))
+    }
+
+    private suspend fun doGenerateSingle(
+        prompt: String, size: String, quality: String, isVip: Boolean, count: Int,
+        attempt: Int, maxAttempts: Int
+    ) = withContext(Dispatchers.IO) {
+        try {
+            val body = JsonObject().apply {
+                addProperty("model", model)
+                addProperty("prompt", prompt)
+                if (size != "auto") addProperty("size", size)
+                if (!isVip) {
+                    if (quality != "auto") addProperty("quality", quality)
+                    addProperty("n", count)
+                }
+                addProperty("response_format", "b64_json")
+            }
+
+            val response = client.newCall(
+                Request.Builder()
+                    .url(endpoint)
+                    .header("Authorization", "Bearer $apiKey")
+                    .header("Content-Type", "application/json")
+                    .post(gson.toJson(body).toRequestBody(JSON_MEDIA))
+                    .build()
+            ).execute()
+
+            val raw = response.body?.string()
+            val code = response.code
+
+            if (code in 500..599 && attempt < maxAttempts && code != 501) {
+                throw RetryableException(code, raw)
+            }
+
+            if (!response.isSuccessful || raw == null) {
+                throw Exception(errorFor(code, raw))
+            }
+            Result.success(parseImages(raw))
+        } catch (e: RetryableException) {
+            Result.failure(e)
+        } catch (e: Exception) {
+            Log.e("ImageGenRepo", "generateSingle failed", e)
+            Result.failure(e)
+        }
     }
 
     companion object {
@@ -146,7 +148,7 @@ class ImageGenRepository(private val context: Context) {
     }
 }
 
-private class RetryableException(val code: Int, rawBody: String?) : Exception(
+class RetryableException(val code: Int, rawBody: String?) : Exception(
     "上游返回 $code${rawBody?.take(100)?.let { ": $it" } ?: ""}"
 )
 

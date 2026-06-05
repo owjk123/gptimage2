@@ -88,85 +88,81 @@ class ImageEditRepository(private val context: Context) {
     }
 
     private suspend fun editViaEditsEndpointSingle(
-        prompt: String,
-        size: String,
-        references: List<EditReference>,
-        quality: String,
-        isVip: Boolean,
-        count: Int = 1
+        prompt: String, size: String, references: List<EditReference>,
+        quality: String, isVip: Boolean, count: Int = 1
     ): Result<List<String>> {
-        var lastError: Exception? = null
         val maxAttempts = 3
         val retryDelayMs = 15_000L
 
         for (attempt in 1..maxAttempts) {
-            val result = withContext(Dispatchers.IO) {
-                try {
-                    val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
-                        .addFormDataPart("model", model)
-                        .addFormDataPart("prompt", prompt)
-                        .addFormDataPart("response_format", "b64_json")
-
-                    if (!isVip) {
-                        builder.addFormDataPart("n", count.toString())
-                        if (quality != "auto") builder.addFormDataPart("quality", quality)
-                    }
-                    if (size != "auto") builder.addFormDataPart("size", size)
-
-                    references.forEachIndexed { idx, ref ->
-                        val ext = if (ref.mimeType.endsWith("png")) "png" else "jpg"
-                        builder.addFormDataPart(
-                            "image",
-                            "ref_${idx + 1}_${UUID.randomUUID()}.$ext",
-                            ref.bytes.toRequestBody(ref.mimeType.toMediaType())
-                        )
-                    }
-
-                    val response = client.newCall(
-                        Request.Builder()
-                            .url("$baseUrl/v1/images/edits")
-                            .header("Authorization", "Bearer $apiKey")
-                            .post(builder.build())
-                            .build()
-                    ).execute()
-
-                    val raw = response.body?.string()
-                    val code = response.code
-
-                    if (code in 500..599 && attempt < maxAttempts && code != 501) {
-                        Log.w("ImageEditRepo", "Attempt $attempt failed with $code, retrying...")
-                        return@withContext Result.failure(RetryableException(code, raw))
-                    }
-
-                    if (!response.isSuccessful || raw == null) {
-                        return@withContext Result.failure(Exception(editErrorFor(code, raw)))
-                    }
-                    Result.success(parseEditResponse(raw))
-                } catch (e: Exception) {
-                    if (e is RetryableException) return@withContext Result.failure(e)
-                    Result.failure(e)
-                }
+            val result = doEditViaEditsEndpointSingle(prompt, size, references, quality, isVip, count, attempt, maxAttempts)
+            if (result.isSuccess) return result
+            val err = result.exceptionOrNull()
+            if (err is RetryableException && attempt < maxAttempts) {
+                Log.w("ImageEditRepo", "Attempt $attempt failed with HTTP ${err.code}, retrying...")
+                delay(retryDelayMs)
+                continue
             }
-
-            result.onSuccess { return it }
-            result.onFailure { e ->
-                if (e is RetryableException) {
-                    lastError = e
-                    delay(retryDelayMs)
-                    continue
-                }
-                return result
-            }
+            return result
         }
-        return Result.failure(lastError ?: Exception("编辑失败（已重试 $maxAttempts 次）"))
+        return Result.failure(Exception("编辑失败（已重试 $maxAttempts 次）"))
+    }
+
+    private suspend fun doEditViaEditsEndpointSingle(
+        prompt: String, size: String, references: List<EditReference>,
+        quality: String, isVip: Boolean, count: Int,
+        attempt: Int, maxAttempts: Int
+    ) = withContext(Dispatchers.IO) {
+        try {
+            val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
+                .addFormDataPart("model", model)
+                .addFormDataPart("prompt", prompt)
+                .addFormDataPart("response_format", "b64_json")
+
+            if (!isVip) {
+                builder.addFormDataPart("n", count.toString())
+                if (quality != "auto") builder.addFormDataPart("quality", quality)
+            }
+            if (size != "auto") builder.addFormDataPart("size", size)
+
+            references.forEachIndexed { idx, ref ->
+                val ext = if (ref.mimeType.endsWith("png")) "png" else "jpg"
+                builder.addFormDataPart(
+                    "image",
+                    "ref_${idx + 1}_${UUID.randomUUID()}.$ext",
+                    ref.bytes.toRequestBody(ref.mimeType.toMediaType())
+                )
+            }
+
+            val response = client.newCall(
+                Request.Builder()
+                    .url("$baseUrl/v1/images/edits")
+                    .header("Authorization", "Bearer $apiKey")
+                    .post(builder.build())
+                    .build()
+            ).execute()
+
+            val raw = response.body?.string()
+            val code = response.code
+
+            if (code in 500..599 && attempt < maxAttempts && code != 501) {
+                throw RetryableException(code, raw)
+            }
+
+            if (!response.isSuccessful || raw == null) {
+                throw Exception(editErrorFor(code, raw))
+            }
+            Result.success(parseEditResponse(raw))
+        } catch (e: RetryableException) {
+            Result.failure(e)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     private suspend fun editViaChatSingle(
-        prompt: String,
-        size: String,
-        references: List<EditReference>,
-        quality: String,
-        count: Int = 1
+        prompt: String, size: String, references: List<EditReference>,
+        quality: String, count: Int = 1
     ): Result<List<String>> = withContext(Dispatchers.IO) {
         try {
             val contentArr = JsonArray()
