@@ -25,7 +25,6 @@ import java.util.concurrent.TimeUnit
 
 /**
  * POST {baseUrl}/v1/chat/completions (multimodal)
- * 多模态生图对话：包含图片的请求可能耗时 60-180s，服务端偶发闪断。
  */
 class ChatRepository(private val context: Context) {
 
@@ -96,7 +95,6 @@ class ChatRepository(private val context: Context) {
             val isUser = msg.role == ChatRole.USER
             val role = if (isUser) "user" else "assistant"
 
-            // 防御：如果跳过 error assistant 导致连续两条 user，插入空 assistant 占位
             if (role == "user" && lastRole == "user") {
                 arr.add(JsonObject().apply {
                     addProperty("role", "assistant")
@@ -107,65 +105,11 @@ class ChatRepository(private val context: Context) {
             val obj = JsonObject()
             obj.addProperty("role", role)
             if (!isUser) {
-                // assistant 消息只传文本，绝不能带 image_url
-                // OpenAI chat/completions API 不支持 assistant 角色 image_url，
-                // 且 base64 图片会让请求体爆炸导致 API 忽略历史或报错
                 val text = msg.text.ifBlank { "[已生成图片]" }
                 obj.addProperty("content", text)
             } else if (msg.images.isEmpty()) {
                 obj.addProperty("content", msg.text)
             } else {
-                // user 消息可以带图片（多模态）
-                val content = JsonArray()
-                if (msg.text.isNotBlank()) {
-                    content.add(JsonObject().apply {
-                        addProperty("type", "text")
-                        addProperty("text", msg.text)
-                    })
-                }
-                for (img in msg.images) {
-                    content.add(JsonObject().apply {
-                        addProperty("type", "image_url")
-                        add("image_url", JsonObject().apply {
-                            addProperty("url", "data:${img.mimeType};base64,${img.base64}")
-                        })
-                    })
-                }
-                obj.add("content", content)
-            }
-            arr.add(obj)
-            lastRole = role
-        }
-        return arr
-    }
-
-    private fun parseReply(raw: String): ChatMessage {
-        val root = JsonParser.parseString(raw).asJsonObject
-        val choice = root.getAsJsonArray("choices")?.firstOrNull()?.asJsonObject
-            ?: throw Exception(root.getAsJsonObject("error")?.get("message")?.asString ?: "空响应")
-        val content = choice.getAsJsonObject("message").get("content").asString
-
-        val images = mutableListOf<ChatImage>()
-        var textPart = content
-
-        val dataRegex = Regex("""data:(image/[a-zA-Z0-9+\-.]+);base64,([A-Za-z0-9+/=]+)""")
-                    addProperty("role", "assistant")
-                    addProperty("content", "[请求失败，已重试]")
-                })
-            }
-
-            val obj = JsonObject()
-            obj.addProperty("role", role)
-            if (!isUser) {
-                // assistant 消息只传文本，绝不能带 image_url
-                // OpenAI chat/completions API 不支持 assistant 角色 image_url，
-                // 且 base64 图片会让请求体爆炸导致 API 忽略历史或报错
-                val text = msg.text.ifBlank { "[已生成图片]" }
-                obj.addProperty("content", text)
-            } else if (msg.images.isEmpty()) {
-                obj.addProperty("content", msg.text)
-            } else {
-                // user 消息可以带图片（多模态）
                 val content = JsonArray()
                 if (msg.text.isNotBlank()) {
                     content.add(JsonObject().apply {
@@ -200,7 +144,6 @@ class ChatRepository(private val context: Context) {
 
         val dataRegex = Regex("""data:(image/[a-zA-Z0-9+\-.]+);base64,([A-Za-z0-9+/=]+)""")
 
-        // 先把 ![alt](data:image/...) 整个 markdown 外壳一起吞掉，避免残留 ![image]([image])
         val mdDataRegex = Regex("""!\[[^\]]*\]\((data:image/[a-zA-Z0-9+\-.]+;base64,[A-Za-z0-9+/=]+)\)""")
         mdDataRegex.findAll(content).forEach { m ->
             val inner = m.groupValues[1]
@@ -209,20 +152,17 @@ class ChatRepository(private val context: Context) {
         }
         textPart = mdDataRegex.replace(textPart, "")
 
-        // 再抓任何裸露的 data URL（没被 markdown 包的）
         dataRegex.findAll(textPart).forEach { m ->
             images += ChatImage(base64 = m.groupValues[2], mimeType = m.groupValues[1])
         }
         textPart = dataRegex.replace(textPart, "")
 
-        // 然后是 markdown 包裹的 http(s) 图片
         val mdUrlRegex = Regex("""!\[[^\]]*\]\((https?://[^)\s]+\.(?:png|jpe?g|webp))\)""", RegexOption.IGNORE_CASE)
         mdUrlRegex.findAll(content).forEach { m ->
             appendRemoteImage(images, m.groupValues[1])
         }
         textPart = mdUrlRegex.replace(textPart, "")
 
-        // 最后是裸露的 http(s) 图片地址
         val urlRegex = Regex("""https?://[^\s)\]]+\.(?:png|jpe?g|webp)""", RegexOption.IGNORE_CASE)
         urlRegex.findAll(textPart).forEach { m -> appendRemoteImage(images, m.value) }
         textPart = urlRegex.replace(textPart, "")
@@ -254,4 +194,3 @@ class ChatRepository(private val context: Context) {
         return resp.body?.bytes() ?: throw Exception("下载图片失败")
     }
 }
-
