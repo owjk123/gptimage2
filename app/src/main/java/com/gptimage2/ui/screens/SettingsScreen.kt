@@ -18,6 +18,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.gptimage2.data.model.API_ENDPOINTS
 import com.gptimage2.data.model.ApiEndpoint
+import com.gptimage2.data.model.MODEL_ALL
+import com.gptimage2.data.model.MODEL_VIP
+import com.gptimage2.data.model.MODEL_OFFICIAL
 import com.gptimage2.ui.components.ChipSelector
 import com.gptimage2.ui.components.GoldButton
 import com.gptimage2.ui.components.GptCard
@@ -31,14 +34,19 @@ private data class ModelOption(val id: String, val label: String, val descriptio
 
 private val MODEL_OPTIONS = listOf(
     ModelOption(
-        id = "gpt-image-2-all",
+        id = MODEL_ALL,
         label = "gpt-image-2-all",
-        description = "APIYI 反代版，$0.03/次，多模态对话直出图片，无并发限制。"
+        description = "APIYI 反代版，$0.03/次，约30-60s出图。不支持 size 参数（尺寸写进prompt）。"
     ),
     ModelOption(
-        id = "gpt-image-2",
+        id = MODEL_VIP,
+        label = "gpt-image-2-vip ⭐",
+        description = "VIP 逆向 Codex 线路，$0.03/次，约90-150s出图。支持 30 档固定尺寸含4K，不支持 quality/n。"
+    ),
+    ModelOption(
+        id = MODEL_OFFICIAL,
         label = "gpt-image-2",
-        description = "OpenAI 官方模型（APIYI 代理），按 token 计费，原生 2K + 4K 上采样、文字渲染最强。"
+        description = "OpenAI 官方代理，按 token 计费，支持 quality/4K上采样/input_fidelity。"
     )
 )
 
@@ -125,16 +133,18 @@ fun SettingsScreen(state: SettingsState, viewModel: MainViewModel) {
             Spacer(Modifier.height(6.dp))
             Text("• POST /v1/chat/completions（多模态对话，本 App 主入口）", color = GptColors.Muted, style = MaterialTheme.typography.bodySmall)
             Text("• POST /v1/images/generations（文生图）", color = GptColors.Muted, style = MaterialTheme.typography.bodySmall)
-            Text("• POST /v1/images/edits（多图编辑，input_fidelity 可锁定主体）", color = GptColors.Muted, style = MaterialTheme.typography.bodySmall)
+            Text("• POST /v1/images/edits（多图编辑）", color = GptColors.Muted, style = MaterialTheme.typography.bodySmall)
         }
 
         GptCard {
             SectionLabel("提示")
             Spacer(Modifier.height(6.dp))
             Text(
-                "• gpt-image-2-all 走对话直出图，最稳；gpt-image-2 用官方代理，按 token 计费，质量更高但要等 API 通道开放。\n" +
+                "• gpt-image-2-all: 最快，约30-60s，尺寸写进prompt\n" +
+                "• gpt-image-2-vip: 支持30档固定尺寸含4K，约90-150s，不支持 quality/n\n" +
+                "• gpt-image-2: 官方代理按 token 计费，需要 quality/input_fidelity 时使用\n" +
                 "• API Key 仅存储在本机 SharedPreferences，不会上传。\n" +
-                "• 若返回「连接被中断」，切换 API 端口（vip / cf / api / b）通常可恢复。",
+                "• 若返回「连接被中断」，切换 API 端口通常可恢复。",
                 color = GptColors.Muted,
                 style = MaterialTheme.typography.bodySmall
             )
