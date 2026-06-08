@@ -23,6 +23,18 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BringIntoViewRequester
+import androidx.compose.foundation.text.rememberBringIntoViewRequester
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.onFocusEvent
+import androidx.compose.ui.text.input.TextFieldValue
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -82,7 +94,7 @@ fun ChatScreen(state: ChatState, viewModel: MainViewModel) {
     val listState = rememberLazyListState()
     var previewImage by remember { mutableStateOf<ChatImage?>(null) }
 
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
             val read = ImageCodec.readUri(context, uri)
             if (read == null) {
@@ -103,8 +115,8 @@ fun ChatScreen(state: ChatState, viewModel: MainViewModel) {
     Column(
         Modifier
             .fillMaxSize()
-            .imePadding()
             .navigationBarsPadding()
+            .imePadding()
     ) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
             Spacer(Modifier.weight(1f))
@@ -135,7 +147,7 @@ fun ChatScreen(state: ChatState, viewModel: MainViewModel) {
         ChatComposer(
             state = state,
             viewModel = viewModel,
-            onPick = { picker.launch("image/*") }
+            onPick = { picker.launch(ActivityResultContracts.PickVisualMedia.ImageOnly) }
         )
     }
 
@@ -283,11 +295,15 @@ private fun AspectPresetRow(selected: ChatAspectPreset?, onToggle: (ChatAspectPr
 
 @Composable
 private fun ChatComposer(state: ChatState, viewModel: MainViewModel, onPick: () -> Unit) {
+    val bringIntoViewRequester = rememberBringIntoViewRequester()
+    val coroutineScope = rememberCoroutineScope()
+
     Column(
         Modifier
             .fillMaxWidth()
             .background(GptColors.Onyx)
             .padding(12.dp)
+            .then(androidx.compose.ui.Modifier.bringIntoViewRequester(bringIntoViewRequester))
     ) {
         AspectPresetRow(selected = state.aspectPreset, onToggle = viewModel::toggleAspectPreset)
         Spacer(Modifier.height(6.dp))
@@ -317,7 +333,7 @@ private fun ChatComposer(state: ChatState, viewModel: MainViewModel, onPick: () 
                     PendingImageThumb(
                         img = state.pendingImages[idx],
                         index = idx + 1,
-                        onTap = { viewModel.appendImageTag(idx + 1) },
+                        onTap = { viewModel.insertImageTagAtCursor(idx + 1) },
                         onRemove = { viewModel.removeChatImage(idx) }
                     )
                 }
@@ -335,7 +351,18 @@ private fun ChatComposer(state: ChatState, viewModel: MainViewModel, onPick: () 
                 onValueChange = viewModel::updateChatDraft,
                 label = "",
                 placeholder = "输入消息……",
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .then(
+                        // 获得焦点时自动滚动到可见区域，避免被键盘遮挡
+                        androidx.compose.ui.Modifier.onFocusEvent { focusState ->
+                            if (focusState.isFocused) {
+                                coroutineScope.launch {
+                                    bringIntoViewRequester.bringIntoView()
+                                }
+                            }
+                        }
+                    ),
                 minLines = 1,
                 maxLines = 4
             )
@@ -439,4 +466,5 @@ private fun SizePresetRow(selected: ImageSize, onSelect: (ImageSize) -> Unit) {
         }
     }
 }
+
 
