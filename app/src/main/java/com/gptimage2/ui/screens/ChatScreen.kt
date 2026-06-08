@@ -23,9 +23,9 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.BringIntoViewRequester
-import androidx.compose.foundation.text.rememberBringIntoViewRequester
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.rememberBringIntoViewRequester
+import androidx.compose.foundation.bringIntoViewRequester
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +34,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.focus.onFocusEvent
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -147,7 +149,7 @@ fun ChatScreen(state: ChatState, viewModel: MainViewModel) {
         ChatComposer(
             state = state,
             viewModel = viewModel,
-            onPick = { picker.launch(ActivityResultContracts.PickVisualMedia.ImageOnly) }
+            onPick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
         )
     }
 
@@ -303,7 +305,7 @@ private fun ChatComposer(state: ChatState, viewModel: MainViewModel, onPick: () 
             .fillMaxWidth()
             .background(GptColors.Onyx)
             .padding(12.dp)
-            .then(androidx.compose.ui.Modifier.bringIntoViewRequester(bringIntoViewRequester))
+            .bringIntoViewRequester(bringIntoViewRequester)
     ) {
         AspectPresetRow(selected = state.aspectPreset, onToggle = viewModel::toggleAspectPreset)
         Spacer(Modifier.height(6.dp))
@@ -353,16 +355,13 @@ private fun ChatComposer(state: ChatState, viewModel: MainViewModel, onPick: () 
                 placeholder = "输入消息……",
                 modifier = Modifier
                     .weight(1f)
-                    .then(
-                        // 获得焦点时自动滚动到可见区域，避免被键盘遮挡
-                        androidx.compose.ui.Modifier.onFocusEvent { focusState ->
-                            if (focusState.isFocused) {
-                                coroutineScope.launch {
-                                    bringIntoViewRequester.bringIntoView()
-                                }
+                    .onFocusEvent { focusState ->
+                        if (focusState.isFocused) {
+                            coroutineScope.launch {
+                                bringIntoViewRequester.bringIntoView()
                             }
                         }
-                    ),
+                    },
                 minLines = 1,
                 maxLines = 4
             )
