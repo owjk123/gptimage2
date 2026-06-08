@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.gptimage2.ui.theme.GptColors
 
@@ -125,6 +126,44 @@ fun GptCard(
 fun GptTextField(
     value: String,
     onValueChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    placeholder: String = "",
+    singleLine: Boolean = false,
+    minLines: Int = 1,
+    maxLines: Int = Int.MAX_VALUE
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier.fillMaxWidth(),
+        label = if (label.isBlank()) null else {
+            { Text(label, color = GptColors.Muted) }
+        },
+        placeholder = if (placeholder.isBlank()) null else {
+            { Text(placeholder, color = GptColors.Muted.copy(alpha = 0.6f)) }
+        },
+        singleLine = singleLine,
+        minLines = minLines,
+        maxLines = maxLines,
+        shape = RoundedCornerShape(10.dp),
+        textStyle = MaterialTheme.typography.bodyMedium.copy(color = GptColors.WarmWhite),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = GptColors.ChampagneGold,
+            unfocusedBorderColor = GptColors.DimGold,
+            cursorColor = GptColors.ChampagneGold,
+            focusedTextColor = GptColors.WarmWhite,
+            unfocusedTextColor = GptColors.WarmWhite,
+            focusedContainerColor = GptColors.Charcoal,
+            unfocusedContainerColor = GptColors.Charcoal
+        )
+    )
+}
+
+@Composable
+fun GptTextField(
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
     label: String,
     modifier: Modifier = Modifier,
     placeholder: String = "",
@@ -250,3 +289,4 @@ fun EmptyHint(text: String, modifier: Modifier = Modifier) {
         )
     }
 }
+
