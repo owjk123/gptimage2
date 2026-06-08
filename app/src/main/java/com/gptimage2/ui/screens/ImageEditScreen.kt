@@ -51,7 +51,7 @@ import com.gptimage2.viewmodel.MainViewModel
 @Composable
 fun ImageEditScreen(state: EditState, viewModel: MainViewModel) {
     val context = LocalContext.current
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
             val read = ImageCodec.readUri(context, uri)
             if (read == null) {
@@ -95,7 +95,7 @@ fun ImageEditScreen(state: EditState, viewModel: MainViewModel) {
                 Spacer(Modifier.height(10.dp))
                 OutlineGoldButton(
                     text = "添加参考图",
-                    onClick = { picker.launch("image/*") },
+                    onClick = { picker.launch(ActivityResultContracts.PickVisualMedia.ImageOnly) },
                     enabled = state.references.size < 4,
                     leadingIcon = Icons.Default.Add,
                     modifier = Modifier.fillMaxWidth()
@@ -190,3 +190,4 @@ private fun ReferenceThumb(ref: EditReference, onRemove: () -> Unit) {
         }
     }
 }
+
