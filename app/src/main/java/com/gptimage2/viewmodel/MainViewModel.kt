@@ -1,6 +1,7 @@
 package com.gptimage2.viewmodel
 
 import android.content.Context
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -59,7 +60,7 @@ val CHAT_ASPECT_PRESETS = listOf(
 
 data class ChatState(
     val messages: List<ChatMessage> = emptyList(),
-    val draft: String = "",
+    val draft: TextFieldValue = TextFieldValue(""),
     val pendingImages: List<ChatImage> = emptyList(),
     val aspectPreset: ChatAspectPreset? = null,
     val sizePreset: ImageSize = ImageSize.SQUARE_1024,
@@ -183,7 +184,7 @@ class MainViewModel(
     }
 
     // ── Chat ─────────────────────────────────────────────────
-    fun updateChatDraft(v: String) = _ui.update { it.copy(chat = it.chat.copy(draft = v)) }
+    fun updateChatDraft(v: TextFieldValue) = _ui.update { it.copy(chat = it.chat.copy(draft = v)) }
 
     fun addChatImage(img: ChatImage) {
         val current = _ui.value.chat.pendingImages
@@ -199,10 +200,16 @@ class MainViewModel(
         }
     }
 
-    fun appendImageTag(index: Int) {
-        _ui.update {
-            it.copy(chat = it.chat.copy(
-                draft = it.chat.draft + " image " + index
+    fun insertImageTagAtCursor(index: Int) {
+        _ui.update { state ->
+            val draft = state.chat.draft
+            val cursor = draft.selection.start
+            val text = draft.text
+            val insertText = " image $index"
+            val newText = text.substring(0, cursor) + insertText + text.substring(cursor)
+            val newCursor = cursor + insertText.length
+            state.copy(chat = state.chat.copy(
+                draft = TextFieldValue(newText, selection = androidx.compose.ui.text.TextRange(newCursor))
             ))
         }
     }
@@ -220,18 +227,18 @@ class MainViewModel(
 
     fun sendChat() {
         val chat = _ui.value.chat
-        if (chat.draft.isBlank() && chat.pendingImages.isEmpty()) return
+        if (chat.draft.text.isBlank() && chat.pendingImages.isEmpty()) return
         val prefix = chat.aspectPreset?.let { "${it.prefix} " } ?: ""
         val userMsg = ChatMessage(
             role = ChatRole.USER,
-            text = prefix + chat.draft,
+            text = prefix + chat.draft.text,
             images = chat.pendingImages
         )
         val pending = ChatMessage(role = ChatRole.ASSISTANT, isLoading = true)
         _ui.update {
             it.copy(chat = it.chat.copy(
                 messages = it.chat.messages + userMsg + pending,
-                draft = "",
+                draft = TextFieldValue(""),
                 pendingImages = emptyList(),
                 isSending = true
             ))
@@ -312,3 +319,4 @@ class MainViewModel(
         }
     }
 }
+
