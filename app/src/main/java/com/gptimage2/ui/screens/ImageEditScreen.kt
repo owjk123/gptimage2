@@ -1,6 +1,7 @@
 package com.gptimage2.ui.screens
 
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -95,7 +96,7 @@ fun ImageEditScreen(state: EditState, viewModel: MainViewModel) {
                 Spacer(Modifier.height(10.dp))
                 OutlineGoldButton(
                     text = "添加参考图",
-                    onClick = { picker.launch(ActivityResultContracts.PickVisualMedia.ImageOnly) },
+                    onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                     enabled = state.references.size < 4,
                     leadingIcon = Icons.Default.Add,
                     modifier = Modifier.fillMaxWidth()
