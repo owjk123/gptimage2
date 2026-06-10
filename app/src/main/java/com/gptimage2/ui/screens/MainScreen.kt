@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Chat
@@ -63,7 +64,13 @@ fun MainScreen(uiState: MainUiState, viewModel: MainViewModel) {
         bottomBar = { BottomBar(uiState.tab, viewModel::setTab) },
         snackbarHost = { SnackbarHost(snackbar) }
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize().background(GptColors.Obsidian)) {
+        Box(
+            Modifier
+                .padding(padding)
+                .imePadding()
+                .fillMaxSize()
+                .background(GptColors.Obsidian)
+        ) {
             when (uiState.tab) {
                 AppTab.GALLERY -> GalleryScreen(uiState.gallery, viewModel)
                 AppTab.SETTINGS -> SettingsScreen(uiState.settings, viewModel)
