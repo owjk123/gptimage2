@@ -1,10 +1,12 @@
 package com.gptimage2.ui.screens
 
+import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.provider.MediaStore
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -20,7 +22,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -53,11 +54,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -90,15 +86,17 @@ fun ChatScreen(state: ChatState, viewModel: MainViewModel) {
     val listState = rememberLazyListState()
     var previewImage by remember { mutableStateOf<ChatImage?>(null) }
 
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) {
-            val read = ImageCodec.readUri(context, uri)
-            if (read == null) {
-                viewModel.showToastPublic("无法读取所选图片")
-                return@rememberLauncherForActivityResult
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            result.data?.data?.let { uri ->
+                val read = ImageCodec.readUri(context, uri)
+                if (read == null) {
+                    viewModel.showToastPublic("无法读取所选图片")
+                    return@let
+                }
+                val b64 = ImageCodec.makePreview(read.first, maxSide = 1024)
+                viewModel.addChatImage(ChatImage(base64 = b64, mimeType = "image/jpeg"))
             }
-            val b64 = ImageCodec.makePreview(read.first, maxSide = 1024)
-            viewModel.addChatImage(ChatImage(base64 = b64, mimeType = "image/jpeg"))
         }
     }
 
@@ -108,12 +106,9 @@ fun ChatScreen(state: ChatState, viewModel: MainViewModel) {
         }
     }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .navigationBarsPadding()
-            .imePadding()
-    ) {
+    // Scaffold already provides bottom padding for NavigationBar, no need for navigationBarsPadding here.
+    // imePadding is applied to ChatComposer directly so keyboard pushes it up.
+    Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
             Spacer(Modifier.weight(1f))
             IconActionButton(
@@ -143,7 +138,10 @@ fun ChatScreen(state: ChatState, viewModel: MainViewModel) {
         ChatComposer(
             state = state,
             viewModel = viewModel,
-            onPick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+            onPick = {
+                val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+                picker.launch(intent)
+            }
         )
     }
 
@@ -152,7 +150,6 @@ fun ChatScreen(state: ChatState, viewModel: MainViewModel) {
             img = img,
             onClose = { previewImage = null },
             onDownload = {
-                // 保存到临时文件并通知
                 val bytes = ImageCodec.base64ToBytes(img.base64)
                 val file = File(context.cacheDir, "chat_image_${System.currentTimeMillis()}.png")
                 FileOutputStream(file).use { it.write(bytes) }
@@ -246,7 +243,6 @@ private fun FullScreenPreview(img: ChatImage, onClose: () -> Unit, onDownload: (
                     modifier = Modifier.fillMaxSize().padding(16.dp)
                 )
             }
-            // 顶部工具栏
             Row(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -295,6 +291,7 @@ private fun ChatComposer(state: ChatState, viewModel: MainViewModel, onPick: () 
         Modifier
             .fillMaxWidth()
             .wrapContentHeight()
+            .imePadding()
             .background(GptColors.Onyx)
             .padding(12.dp)
     ) {
@@ -349,7 +346,6 @@ private fun ChatComposer(state: ChatState, viewModel: MainViewModel, onPick: () 
                 maxLines = 4
             )
             Spacer(Modifier.width(4.dp))
-            // 支持连续提交：按钮始终可用，有进行中任务时显示计数徽标
             val pendingCount = state.messages.count { it.isLoading }
             IconButton(onClick = viewModel::sendChat) {
                 BadgedBox(
@@ -401,52 +397,50 @@ private fun PendingImageThumb(
                     .clip(RoundedCornerShape(8.dp))
             )
         }
-        // 序号徽标（左下），用户一看就知道点击后会插入 "image N"
-        Surface(
+        Text(
+            "image $index",
             color = GptColors.ChampagneGold,
-            contentColor = GptColors.Obsidian,
-            shape = RoundedCornerShape(6.dp),
-            modifier = Modifier.align(Alignment.BottomStart).padding(3.dp)
-        ) {
-            Text(
-                "image $index",
-                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
-                style = MaterialTheme.typography.labelSmall
-            )
-        }
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .background(GptColors.Obsidian.copy(alpha = 0.7f))
+                .padding(horizontal = 4.dp, vertical = 2.dp)
+        )
         IconButton(
             onClick = onRemove,
-            modifier = Modifier.align(Alignment.TopEnd).size(22.dp)
+            modifier = Modifier.align(Alignment.TopEnd).size(24.dp)
         ) {
-            Icon(Icons.Default.Close, contentDescription = null, tint = GptColors.WarmWhite)
+            Icon(
+                Icons.Default.Close,
+                contentDescription = "移除",
+                tint = GptColors.WarmWhite,
+                modifier = Modifier.size(16.dp)
+            )
         }
     }
 }
 
-
-
 @Composable
 private fun SizePresetRow(selected: ImageSize, onSelect: (ImageSize) -> Unit) {
     LazyRow(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        items(ImageSize.values(), key = { it.name }) { size ->
+        items(ImageSize.values().toList(), key = { it.label }) { size ->
+            val isSelected = selected == size
             Surface(
                 onClick = { onSelect(size) },
-                color = if (selected.name == size.name) GptColors.ChampagneGold else GptColors.Charcoal,
-                contentColor = if (selected.name == size.name) GptColors.Obsidian else GptColors.Muted,
+                color = if (isSelected) GptColors.ChampagneGold else GptColors.Charcoal,
+                contentColor = if (isSelected) GptColors.Obsidian else GptColors.Muted,
                 shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.dp, if (selected.name == size.name) GptColors.ChampagneGold else GptColors.Steel)
+                border = BorderStroke(1.dp, if (isSelected) GptColors.ChampagneGold else GptColors.Steel)
             ) {
                 Text(
                     size.label,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                     style = MaterialTheme.typography.labelSmall
                 )
             }
         }
     }
 }
-
-
