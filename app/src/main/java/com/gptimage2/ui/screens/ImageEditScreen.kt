@@ -1,7 +1,9 @@
 package com.gptimage2.ui.screens
 
+import android.app.Activity
+import android.content.Intent
+import android.provider.MediaStore
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -52,20 +54,22 @@ import com.gptimage2.viewmodel.MainViewModel
 @Composable
 fun ImageEditScreen(state: EditState, viewModel: MainViewModel) {
     val context = LocalContext.current
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) {
-            val read = ImageCodec.readUri(context, uri)
-            if (read == null) {
-                viewModel.showToastPublic("无法读取所选图片")
-                return@rememberLauncherForActivityResult
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            result.data?.data?.let { uri ->
+                val read = ImageCodec.readUri(context, uri)
+                if (read == null) {
+                    viewModel.showToastPublic("无法读取所选图片")
+                    return@let
+                }
+                val (bytes, mime) = read
+                val preview = ImageCodec.makePreview(bytes)
+                val uploadBytes = ImageCodec.makePreview(bytes, maxSide = 1536)
+                    .let { ImageCodec.base64ToBytes(it) }
+                viewModel.addEditReference(
+                    EditReference(bytes = uploadBytes, mimeType = "image/jpeg", previewBase64 = preview)
+                )
             }
-            val (bytes, mime) = read
-            val preview = ImageCodec.makePreview(bytes)
-            val uploadBytes = ImageCodec.makePreview(bytes, maxSide = 1536)
-                .let { ImageCodec.base64ToBytes(it) }
-            viewModel.addEditReference(
-                EditReference(bytes = uploadBytes, mimeType = "image/jpeg", previewBase64 = preview)
-            )
         }
     }
 
@@ -96,7 +100,10 @@ fun ImageEditScreen(state: EditState, viewModel: MainViewModel) {
                 Spacer(Modifier.height(10.dp))
                 OutlineGoldButton(
                     text = "添加参考图",
-                    onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+                        picker.launch(intent)
+                    },
                     enabled = state.references.size < 4,
                     leadingIcon = Icons.Default.Add,
                     modifier = Modifier.fillMaxWidth()
@@ -191,4 +198,3 @@ private fun ReferenceThumb(ref: EditReference, onRemove: () -> Unit) {
         }
     }
 }
-
