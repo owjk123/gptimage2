@@ -69,7 +69,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.SecureFlagPolicy
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import com.gptimage2.data.model.ChatImage
 import com.gptimage2.data.model.ChatMessage
 import com.gptimage2.data.model.ChatRole
@@ -95,7 +96,7 @@ fun ChatScreen(state: ChatState, viewModel: MainViewModel) {
     val density = LocalDensity.current
 
     // Detect keyboard state
-    val imeBottom = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(density)
+    val imeBottom = WindowInsets.ime.getBottom(density)
     val isKeyboardOpen = imeBottom > 0
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
